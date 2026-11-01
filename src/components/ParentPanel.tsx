@@ -33,6 +33,7 @@ interface ParentPanelProps {
   onResetSpawn: () => void;
   onAddCustomVehicle: (vehicle: VehicleItem) => void;
   activeVehicles: VehicleItem[];
+  onForceRequestPermissions: () => void;
 }
 
 export const ParentPanel: React.FC<ParentPanelProps> = ({
@@ -45,6 +46,7 @@ export const ParentPanel: React.FC<ParentPanelProps> = ({
   onResetSpawn,
   onAddCustomVehicle,
   activeVehicles,
+  onForceRequestPermissions,
 }) => {
   const [activeTab, setActiveTab] = useState<'calibration' | 'vehicles' | 'audio' | 'environment'>('calibration');
   const [customJsCode, setCustomJsCode] = useState('');
@@ -215,6 +217,13 @@ export const ParentPanel: React.FC<ParentPanelProps> = ({
                 >
                   <Compass className="w-4 h-4" />
                   Lock Forward Baseline (0° Zero)
+                </button>
+
+                <button
+                  onClick={onForceRequestPermissions}
+                  className="mt-2 w-full py-2 px-4 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs rounded-lg shadow-sm transition-colors flex items-center justify-center gap-2"
+                >
+                  <span>📲 Force Request Phone Permissions</span>
                 </button>
               </div>
 

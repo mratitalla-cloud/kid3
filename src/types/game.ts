@@ -22,6 +22,7 @@ export type GameEvent =
   | { type: 'SWAP_VEHICLE'; vehicleId: string }
   | { type: 'COLLISION_TRIGGER'; severity: CollisionSeverity }
   | { type: 'CALIBRATE_BASELINE'; baselineAlpha: number }
+  | { type: 'FORCE_REQUEST_PERMISSIONS' }
   | { type: 'RESET_SPAWN' }
   | { type: 'PING'; timestamp: number }
   | { type: 'PONG'; timestamp: number };

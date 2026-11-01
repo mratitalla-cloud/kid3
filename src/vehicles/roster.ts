@@ -20,10 +20,17 @@ export interface VehicleItem extends VehicleDefinition {
 
 /**
  * 1. Sunny Roadster (Toy Convertible)
+ * Designed with an unmistakable racing sports car silhouette,
+ * forward wedge nose, glowing headlights, and rear spoiler.
  */
 function createRoadsterMesh(): VehicleMeshBundle {
   const root = new THREE.Group();
   root.name = 'SunnyRoadster';
+
+  const carGroup = new THREE.Group();
+  // Rotate 180 degrees so front aligns with forward travel direction
+  carGroup.rotation.y = Math.PI;
+  root.add(carGroup);
 
   const redMat = new THREE.MeshStandardMaterial({
     color: 0xef4444,
@@ -49,12 +56,17 @@ function createRoadsterMesh(): VehicleMeshBundle {
     roughness: 0.1,
     metalness: 0.2,
     transparent: true,
-    opacity: 0.6,
+    opacity: 0.65,
   });
   const lightMat = new THREE.MeshStandardMaterial({
     color: 0xfef08a,
     emissive: 0xfef08a,
-    emissiveIntensity: 0.5,
+    emissiveIntensity: 0.8,
+  });
+  const tailLightMat = new THREE.MeshStandardMaterial({
+    color: 0xef4444,
+    emissive: 0xdc2626,
+    emissiveIntensity: 0.8,
   });
   const seatMat = new THREE.MeshStandardMaterial({
     color: 0xfde047,
@@ -67,23 +79,23 @@ function createRoadsterMesh(): VehicleMeshBundle {
   body.position.set(0, 0.65, 0);
   body.castShadow = true;
   body.receiveShadow = true;
-  root.add(body);
+  carGroup.add(body);
 
-  // Rounded front hood
+  // Rounded front hood wedge
   const hoodGeo = new THREE.CylinderGeometry(1.1, 1.1, 2.2, 16, 1, false, 0, Math.PI);
   const hood = new THREE.Mesh(hoodGeo, darkRedMat);
   hood.rotation.z = Math.PI / 2;
   hood.rotation.y = Math.PI / 2;
   hood.position.set(0, 1.0, -0.6);
   hood.castShadow = true;
-  root.add(hood);
+  carGroup.add(hood);
 
   // Windshield
   const shieldGeo = new THREE.BoxGeometry(2.0, 0.8, 0.1);
   const shield = new THREE.Mesh(shieldGeo, glassMat);
   shield.position.set(0, 1.35, -0.3);
   shield.rotation.x = 0.3;
-  root.add(shield);
+  carGroup.add(shield);
 
   // Seats
   const seatGeo = new THREE.BoxGeometry(0.7, 0.6, 0.6);
@@ -91,21 +103,38 @@ function createRoadsterMesh(): VehicleMeshBundle {
   seatL.position.set(-0.5, 0.9, 0.5);
   const seatR = new THREE.Mesh(seatGeo, seatMat);
   seatR.position.set(0.5, 0.9, 0.5);
-  root.add(seatL, seatR);
+  carGroup.add(seatL, seatR);
 
   // Steering wheel
   const wheelTorus = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.05, 8, 16), chromeMat);
   wheelTorus.position.set(-0.5, 1.15, -0.1);
   wheelTorus.rotation.x = 0.5;
-  root.add(wheelTorus);
+  carGroup.add(wheelTorus);
 
-  // Headlights
+  // Front Headlights
   const headL = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 0.15, 16), lightMat);
   headL.rotation.x = Math.PI / 2;
   headL.position.set(-0.7, 0.7, -2.05);
   const headR = headL.clone();
   headR.position.x = 0.7;
-  root.add(headL, headR);
+  carGroup.add(headL, headR);
+
+  // Rear Taillights
+  const tailL = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.2, 0.1), tailLightMat);
+  tailL.position.set(-0.7, 0.75, 2.05);
+  const tailR = tailL.clone();
+  tailR.position.x = 0.7;
+  carGroup.add(tailL, tailR);
+
+  // Rear Racing Spoiler
+  const spoilerWing = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.1, 0.5), darkRedMat);
+  spoilerWing.position.set(0, 1.45, 1.8);
+  const postGeo = new THREE.CylinderGeometry(0.05, 0.05, 0.5, 8);
+  const postL = new THREE.Mesh(postGeo, chromeMat);
+  postL.position.set(-0.8, 1.2, 1.8);
+  const postR = postL.clone();
+  postR.position.x = 0.8;
+  carGroup.add(spoilerWing, postL, postR);
 
   // Dual chrome exhausts
   const exhaustGeo = new THREE.CylinderGeometry(0.1, 0.1, 0.4, 12);
@@ -114,7 +143,7 @@ function createRoadsterMesh(): VehicleMeshBundle {
   exhaustL.position.set(-0.6, 0.4, 2.1);
   const exhaustR = exhaustL.clone();
   exhaustR.position.x = 0.6;
-  root.add(exhaustL, exhaustR);
+  carGroup.add(exhaustL, exhaustR);
 
   // 4 Wheels
   const wheels: THREE.Object3D[] = [];
@@ -140,7 +169,7 @@ function createRoadsterMesh(): VehicleMeshBundle {
     hub.rotation.z = Math.PI / 2;
 
     wGroup.add(tire, hub);
-    root.add(wGroup);
+    carGroup.add(wGroup);
     wheels.push(wGroup);
   });
 
@@ -213,7 +242,6 @@ function createSteamTrainMesh(): VehicleMeshBundle {
   tenderBody.castShadow = true;
   tender.add(tenderBody);
 
-  // Coal mound
   const coalGeo = new THREE.DodecahedronGeometry(0.5, 1);
   const coal = new THREE.Mesh(coalGeo, new THREE.MeshStandardMaterial({ color: 0x09090b, roughness: 0.9 }));
   coal.scale.set(1.2, 0.6, 1.5);
@@ -250,10 +278,10 @@ function createSteamTrainMesh(): VehicleMeshBundle {
   const tWheelGeo = new THREE.CylinderGeometry(0.38, 0.38, 0.15, 16);
 
   const trainAxles = [
-    [-1.2, -0.8], [-1.2, 0.2], [-1.2, 1.1], // loco
-    [1.2, -0.5], [1.2, 0.5],               // tender
-    [3.8, -0.6], [3.8, 0.6],               // car 1
-    [6.8, -0.6], [6.8, 0.6],               // car 2
+    [-1.2, -0.8], [-1.2, 0.2], [-1.2, 1.1],
+    [1.2, -0.5], [1.2, 0.5],
+    [3.8, -0.6], [3.8, 0.6],
+    [6.8, -0.6], [6.8, 0.6],
   ];
 
   trainAxles.forEach(([zCenter, zOffset]) => {
@@ -272,7 +300,7 @@ function createSteamTrainMesh(): VehicleMeshBundle {
 }
 
 /**
- * 3. Barnstormer (Playful Cartoon Biplane)
+ * 3. Barnstormer (Playful Cartoon Biplane with Full 3D Flight)
  */
 function createBiplaneMesh(): VehicleMeshBundle {
   const root = new THREE.Group();
@@ -304,7 +332,7 @@ function createBiplaneMesh(): VehicleMeshBundle {
   upperWing.castShadow = true;
   root.add(upperWing);
 
-  // Wing Struts (4 vertical poles)
+  // Wing Struts
   const strutGeo = new THREE.CylinderGeometry(0.04, 0.04, 1.1, 8);
   [-2.5, -1.0, 1.0, 2.5].forEach((x) => {
     const strut = new THREE.Mesh(strutGeo, metalMat);
@@ -312,7 +340,7 @@ function createBiplaneMesh(): VehicleMeshBundle {
     root.add(strut);
   });
 
-  // Cockpit canopy
+  // Cockpit
   const windshield = new THREE.Mesh(
     new THREE.BoxGeometry(0.6, 0.35, 0.08),
     new THREE.MeshStandardMaterial({ color: 0x93c5fd, transparent: true, opacity: 0.6 })
@@ -382,7 +410,6 @@ function createDiggerMesh(): VehicleMeshBundle {
     track.receiveShadow = true;
     root.add(track);
 
-    // Track wheels/cogs
     [-1.1, 0, 1.1].forEach((z) => {
       const roller = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.52, 12), metalMat);
       roller.rotation.z = Math.PI / 2;
@@ -391,22 +418,18 @@ function createDiggerMesh(): VehicleMeshBundle {
     });
   });
 
-  // Base turntable chassis
   const chassis = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.4, 2.2), darkYellowMat);
   chassis.position.set(0, 0.75, 0);
   root.add(chassis);
 
-  // Rotating Cab Group
   const cabGroup = new THREE.Group();
   cabGroup.position.set(0, 0.95, 0);
 
-  // Cab House
   const cabBody = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.2, 1.8), yellowMat);
   cabBody.position.set(0, 0.6, 0.2);
   cabBody.castShadow = true;
   cabGroup.add(cabBody);
 
-  // Cab Windows
   const cabWindow = new THREE.Mesh(
     new THREE.BoxGeometry(1.3, 0.6, 0.05),
     new THREE.MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.1, transparent: true, opacity: 0.7 })
@@ -414,12 +437,10 @@ function createDiggerMesh(): VehicleMeshBundle {
   cabWindow.position.set(0, 0.8, -0.71);
   cabGroup.add(cabWindow);
 
-  // Warning beacon on roof
   const beacon = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.2, 12), lightMat);
   beacon.position.set(0, 1.3, 0.2);
   cabGroup.add(beacon);
 
-  // 2-Stage Articulated Boom Arm
   const boom1 = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.4, 2.0), darkYellowMat);
   boom1.position.set(0, 1.1, -1.2);
   boom1.rotation.x = -0.55;
@@ -430,7 +451,6 @@ function createDiggerMesh(): VehicleMeshBundle {
   boom2.rotation.x = 0.65;
   cabGroup.add(boom2);
 
-  // Metal Digging Bucket
   const bucket = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.6, 0.8), metalMat);
   bucket.position.set(0, 0.9, -3.1);
   bucket.rotation.x = 0.2;
@@ -448,27 +468,18 @@ function createDiggerMesh(): VehicleMeshBundle {
 function renderRoadsterSvg(pri: string, acc: string): string {
   return `
     <svg viewBox="0 0 200 320" class="w-full h-full drop-shadow-2xl">
-      <!-- Shadow -->
       <ellipse cx="100" cy="165" rx="75" ry="120" fill="rgba(0,0,0,0.15)" />
-      <!-- 4 Wheels -->
       <rect x="18" y="45" width="22" height="48" rx="6" fill="#1e293b" />
       <rect x="160" y="45" width="22" height="48" rx="6" fill="#1e293b" />
       <rect x="18" y="215" width="22" height="48" rx="6" fill="#1e293b" />
       <rect x="160" y="215" width="22" height="48" rx="6" fill="#1e293b" />
-      <!-- Main Body -->
       <rect x="36" y="30" width="128" height="250" rx="36" fill="${pri}" />
-      <!-- Hood Scoop / Racing stripe -->
       <rect x="90" y="35" width="20" height="90" rx="4" fill="${acc}" />
-      <!-- Windshield -->
       <path d="M 46 115 Q 100 95 154 115 L 148 140 Q 100 125 52 140 Z" fill="#93c5fd" opacity="0.85" />
-      <!-- Interior cockpit -->
       <rect x="52" y="145" width="96" height="70" rx="14" fill="#0f172a" opacity="0.8" />
-      <!-- Steering Wheel -->
       <circle cx="75" cy="160" r="14" stroke="#f1f5f9" stroke-width="4" fill="none" />
-      <!-- Two Yellow Seats -->
       <rect x="62" y="175" width="28" height="34" rx="8" fill="#fde047" />
       <rect x="110" y="175" width="28" height="34" rx="8" fill="#fde047" />
-      <!-- Headlights -->
       <circle cx="58" cy="40" r="10" fill="#fef08a" />
       <circle cx="142" cy="40" r="10" fill="#fef08a" />
     </svg>
@@ -478,25 +489,16 @@ function renderRoadsterSvg(pri: string, acc: string): string {
 function renderSteamTrainSvg(pri: string, acc: string): string {
   return `
     <svg viewBox="0 0 200 360" class="w-full h-full drop-shadow-2xl">
-      <!-- Shadow -->
       <ellipse cx="100" cy="180" rx="65" ry="140" fill="rgba(0,0,0,0.15)" />
-      <!-- Cowcatcher wedge at front -->
       <polygon points="100,20 45,65 155,65" fill="#e11d48" />
-      <!-- Boiler -->
       <rect x="55" y="60" width="90" height="150" rx="18" fill="${pri}" />
-      <!-- Gold bands -->
       <rect x="55" y="90" width="90" height="8" fill="${acc}" />
       <rect x="55" y="135" width="90" height="8" fill="${acc}" />
-      <!-- Smokestack -->
       <circle cx="100" cy="80" r="16" fill="#1e293b" />
       <circle cx="100" cy="80" r="10" fill="#475569" />
-      <!-- Cab -->
       <rect x="42" y="195" width="116" height="75" rx="12" fill="#e11d48" />
-      <!-- Cab Roof -->
       <rect x="48" y="200" width="104" height="65" rx="8" fill="#1e293b" />
-      <!-- Tender connection -->
       <rect x="88" y="270" width="24" height="20" fill="#475569" />
-      <!-- Coal Tender Car -->
       <rect x="50" y="285" width="100" height="60" rx="8" fill="#1e293b" />
       <circle cx="100" cy="315" r="16" fill="#09090b" />
     </svg>
@@ -506,19 +508,13 @@ function renderSteamTrainSvg(pri: string, acc: string): string {
 function renderBiplaneSvg(pri: string, acc: string): string {
   return `
     <svg viewBox="0 0 260 260" class="w-full h-full drop-shadow-2xl">
-      <!-- Shadow -->
       <ellipse cx="130" cy="140" rx="100" ry="80" fill="rgba(0,0,0,0.15)" />
-      <!-- Wings -->
       <rect x="15" y="95" width="230" height="50" rx="14" fill="${acc}" />
       <rect x="25" y="105" width="210" height="10" rx="4" fill="#1d4ed8" />
-      <!-- Fuselage -->
       <rect x="105" y="30" width="50" height="190" rx="22" fill="${pri}" />
-      <!-- Cockpit -->
       <ellipse cx="130" cy="115" rx="16" ry="24" fill="#1e293b" />
       <circle cx="130" cy="120" r="9" fill="#fde047" />
-      <!-- Tail fin -->
       <polygon points="130,220 100,245 160,245" fill="#dc2626" />
-      <!-- Spinning Propeller Blades -->
       <rect x="75" y="26" width="110" height="10" rx="4" fill="#334155" opacity="0.8" />
       <circle cx="130" cy="31" r="10" fill="#dc2626" />
     </svg>
@@ -528,12 +524,9 @@ function renderBiplaneSvg(pri: string, acc: string): string {
 function renderDiggerSvg(pri: string, acc: string): string {
   return `
     <svg viewBox="0 0 220 320" class="w-full h-full drop-shadow-2xl">
-      <!-- Shadow -->
       <ellipse cx="110" cy="165" rx="70" ry="110" fill="rgba(0,0,0,0.15)" />
-      <!-- Caterpillar Tracks -->
       <rect x="25" y="60" width="35" height="180" rx="10" fill="#27272a" />
       <rect x="160" y="60" width="35" height="180" rx="10" fill="#27272a" />
-      <!-- Track tread notches -->
       <line x1="25" y1="90" x2="60" y2="90" stroke="#52525b" stroke-width="3" />
       <line x1="25" y1="130" x2="60" y2="130" stroke="#52525b" stroke-width="3" />
       <line x1="25" y1="170" x2="60" y2="170" stroke="#52525b" stroke-width="3" />
@@ -542,17 +535,12 @@ function renderDiggerSvg(pri: string, acc: string): string {
       <line x1="160" y1="130" x2="195" y2="130" stroke="#52525b" stroke-width="3" />
       <line x1="160" y1="170" x2="195" y2="170" stroke="#52525b" stroke-width="3" />
       <line x1="160" y1="210" x2="195" y2="210" stroke="#52525b" stroke-width="3" />
-      <!-- Main Cab House -->
       <rect x="58" y="90" width="104" height="120" rx="16" fill="${pri}" />
       <rect x="70" y="105" width="80" height="75" rx="8" fill="#ca8a04" />
-      <!-- Window glass -->
       <rect x="75" y="110" width="70" height="25" rx="4" fill="#38bdf8" opacity="0.8" />
-      <!-- Flashing beacon -->
       <circle cx="110" cy="155" r="8" fill="#f97316" />
-      <!-- Excavator Arm & Bucket Extending Forward -->
       <rect x="98" y="20" width="24" height="75" rx="6" fill="${acc}" />
       <path d="M 85 10 L 135 10 L 125 35 L 95 35 Z" fill="#71717a" />
-      <!-- Bucket teeth -->
       <polygon points="90,10 95,0 100,10" fill="#52525b" />
       <polygon points="105,10 110,0 115,10" fill="#52525b" />
       <polygon points="120,10 125,0 130,10" fill="#52525b" />
@@ -586,7 +574,7 @@ export const BUILTIN_VEHICLES: VehicleItem[] = [
   {
     id: 'biplane',
     name: 'Barnstormer',
-    subtitle: 'Whimsical Flying Biplane',
+    subtitle: 'Flying Stunt Biplane',
     type: 'air',
     baseSpeed: 16,
     primaryColor: '#facc15',
@@ -632,7 +620,7 @@ export async function loadVehicleFromModule(codeString: string): Promise<Vehicle
     return {
       id,
       name,
-      subtitle: 'Custom AI Generated Vehicle',
+      subtitle: config.type === 'air' ? 'Custom Flying Aircraft' : 'Custom Ground Vehicle',
       type,
       baseSpeed,
       primaryColor,
@@ -650,26 +638,27 @@ export async function loadVehicleFromModule(codeString: string): Promise<Vehicle
 }
 
 /**
- * AI Vehicle Prompt Template generator (Section 8)
+ * AI Vehicle Prompt Template generator with 3D Flight & Destruction support
  */
 export function getAiVehiclePrompt(userPrompt: string): string {
-  return `You are an expert Three.js 3D vehicle and object generator for a modular toddler driving game.
+  return `You are an expert Three.js 3D vehicle and aircraft generator for a toddler motion driving game.
 Generate a complete, fully valid JavaScript ES Module file according to the specifications below.
 
 RULES:
 1. Return strictly valid JavaScript ES module code starting with \`export default {\`. Do not wrap code in markdown tags if saving directly to file.
-2. High Complexity Support: Support detailed multi-part structures when requested (e.g., trains with multiple connected cabins/cars, multi-axle heavy haulers, articulated construction machinery, multi-propeller aircraft, or complex mechanical assemblies). Group sub-assemblies cleanly into hierarchical \`THREE.Group()\` nodes.
+2. Ground & Air Vehicles Supported:
+   - For ground vehicles: \`type: "ground"\`, \`baseSpeed: 10\` (cars: 10, trains/excavators: 6). Attach wheels or tracks.
+   - For flying aircraft: \`type: "air"\`, \`baseSpeed: 16\`. Include wings, tail rudder, and an animated propeller or jet nozzle. Phone pitch tilt climbs/dives altitude between 2m and 32m, and phone roll banks wings into turns!
 3. Baseline Parameters:
    - name: "Vehicle Name"
-   - baseSpeed: 10 (cars: 10, trains/excavators: 6, jets: 16)
+   - baseSpeed: 10 (or 16 for jets/planes)
    - type: "ground" or "air"
    - primaryColor: "#ef4444"
    - accentColor: "#fde047"
 4. Geometry Construction: Build the visual representation strictly inside \`geometry(THREE)\` using rich primitive compositions (BoxGeometry, CylinderGeometry, SphereGeometry, ConeGeometry, TorusGeometry, ExtrudeGeometry, etc.).
-5. Visual Polish: Apply bright, vibrant, high-contrast, toddler-friendly colors using \`THREE.MeshStandardMaterial\` with varied roughness and metalness.
-6. Pivot & Alignment: Center the main group at ground level (Y = 0) facing forward along the -Z axis.
-7. Return a unified root \`THREE.Group()\` object containing all assembled sub-components.
+5. Forward Alignment: Crucial! Center the main group at ground level (Y = 0) facing forward along the -Z axis (front nose, headlights, or propeller at -Z, exhaust or tail at +Z).
+6. Return a unified root \`THREE.Group()\` object containing all assembled sub-components.
 
 USER REQUEST:
-${userPrompt || 'A colorful cartoon fire engine with a rotatable ladder, siren lights, water tank, and chunky rubber wheels.'}`;
+${userPrompt || 'A colorful cartoon jet airplane with swept wings, cockpit canopy, twin vertical tail fins, and spinning nose propeller.'}`;
 }

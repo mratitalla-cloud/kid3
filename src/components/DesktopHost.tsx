@@ -102,7 +102,14 @@ export const DesktopHost: React.FC = () => {
     physicsRef.current.wheels = bundle.wheels || [];
     physicsRef.current.propeller = bundle.propeller || null;
     physicsRef.current.smokeEmitter = bundle.smokeEmitter || null;
+    physicsRef.current.setVehicleType(target.type);
   }, [vehicles]);
+
+  // Force Request Phone Permissions from Parent Panel
+  const handleForceRequestPermissions = () => {
+    peerServiceRef.current?.send({ type: 'FORCE_REQUEST_PERMISSIONS' });
+    desktopAudio.playJump();
+  };
 
   // Handle incoming game events from mobile controller
   clientEventRef.current = (event: GameEvent) => {
@@ -388,15 +395,24 @@ export const DesktopHost: React.FC = () => {
         }
       );
 
-      // 3. Non-blocking Obstacle Collisions check
-      worldGen.checkCollisions(physics.position, 2.2, (severity) => {
-        desktopAudio.playCrash(severity);
-        // Send vibration packet to mobile over WebRTC
-        peerServiceRef.current?.send({
-          type: 'COLLISION_TRIGGER',
-          severity,
-        });
-      });
+      // 3. Non-blocking Obstacle & Air Collectibles Collisions check
+      worldGen.checkCollisions(
+        physics.position,
+        2.4,
+        physics.isAirVehicle,
+        (severity, isAirItem) => {
+          if (isAirItem) {
+            desktopAudio.playStarCollect();
+          } else {
+            desktopAudio.playCrash(severity);
+          }
+          // Send vibration & audio trigger packet to mobile over WebRTC
+          peerServiceRef.current?.send({
+            type: 'COLLISION_TRIGGER',
+            severity,
+          });
+        }
+      );
 
       // 4. Update procedural chunks around vehicle
       worldGen.updateChunks(physics.position, settingsRef.current.groundDensity);
@@ -547,6 +563,7 @@ export const DesktopHost: React.FC = () => {
         onResetSpawn={handleResetSpawn}
         onAddCustomVehicle={handleAddCustomVehicle}
         activeVehicles={vehicles}
+        onForceRequestPermissions={handleForceRequestPermissions}
       />
     </div>
   );
