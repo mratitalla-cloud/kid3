@@ -12,7 +12,6 @@ import {
   DEFAULT_PARENT_SETTINGS,
   GameEvent,
   MotionPacket,
-  CollisionSeverity,
 } from '../types/game';
 import { BUILTIN_VEHICLES, VehicleItem, VehicleMeshBundle } from '../vehicles/roster';
 import { WorldGenerator } from '../engine/worldGenerator';
@@ -20,7 +19,7 @@ import { VehiclePhysics } from '../engine/vehiclePhysics';
 import { QRCodeOverlay } from './QRCodeOverlay';
 import { ParentPanel } from './ParentPanel';
 import { desktopAudio } from '../services/audioService';
-import { Settings, RefreshCw, Car } from 'lucide-react';
+import { Settings, RefreshCw, Car, Gauge, Wifi } from 'lucide-react';
 
 const STORAGE_KEY = 'toddler_drive_parent_settings_v1';
 
@@ -31,7 +30,8 @@ export const DesktopHost: React.FC = () => {
   const [isParentPanelOpen, setIsParentPanelOpen] = useState(false);
   const [vehicles, setVehicles] = useState<VehicleItem[]>(BUILTIN_VEHICLES);
   const [activeVehicleId, setActiveVehicleId] = useState<string>('roadster');
-  const [latestMotion, setLatestMotion] = useState<MotionPacket | null>(null);
+  const [parentPanelMotion, setParentPanelMotion] = useState<MotionPacket | null>(null);
+  const [displaySpeed, setDisplaySpeed] = useState<number>(0);
 
   // Settings from localStorage with fallback to default
   const [settings, setSettings] = useState<ParentSettings>(() => {
@@ -52,6 +52,10 @@ export const DesktopHost: React.FC = () => {
   const settingsRef = useRef<ParentSettings>(settings);
   settingsRef.current = settings;
 
+  const latestMotionRef = useRef<MotionPacket | null>(null);
+  const clientEventRef = useRef<((event: GameEvent) => void) | null>(null);
+  const keyboardStateRef = useRef({ forward: 0, steer: 0, jump: false });
+
   // Save settings on update
   const handleUpdateSettings = (newSettings: ParentSettings) => {
     setSettings(newSettings);
@@ -64,7 +68,7 @@ export const DesktopHost: React.FC = () => {
     desktopAudio.setVolume(newSettings.desktopVolume);
   };
 
-  // Switch 3D vehicle model
+  // Switch 3D vehicle model in-place without tearing down Three.js scene
   const switchVehicleModel = useCallback((vehicleId: string) => {
     const target = vehicles.find((v) => v.id === vehicleId) || vehicles[0];
     if (!target) return;
@@ -72,13 +76,27 @@ export const DesktopHost: React.FC = () => {
     setActiveVehicleId(target.id);
 
     // Clear previous mesh children
-    while (activeVehicleGroupRef.current.children.length > 0) {
-      activeVehicleGroupRef.current.remove(activeVehicleGroupRef.current.children[0]);
+    const group = activeVehicleGroupRef.current;
+    while (group.children.length > 0) {
+      group.remove(group.children[0]);
     }
 
     const bundle = target.create3D();
     currentBundleRef.current = bundle;
-    activeVehicleGroupRef.current.add(bundle.root);
+    group.add(bundle.root);
+
+    // Re-attach contact shadow
+    const contactShadowGeo = new THREE.PlaneGeometry(3.6, 5.0);
+    contactShadowGeo.rotateX(-Math.PI / 2);
+    const contactShadowMat = new THREE.MeshBasicMaterial({
+      color: 0x000000,
+      transparent: true,
+      opacity: 0.35,
+      depthWrite: false,
+    });
+    const contactShadow = new THREE.Mesh(contactShadowGeo, contactShadowMat);
+    contactShadow.position.y = 0.02;
+    group.add(contactShadow);
 
     // Link animated parts to physics engine
     physicsRef.current.wheels = bundle.wheels || [];
@@ -87,9 +105,9 @@ export const DesktopHost: React.FC = () => {
   }, [vehicles]);
 
   // Handle incoming game events from mobile controller
-  const handleClientEvent = useCallback((event: GameEvent) => {
+  clientEventRef.current = (event: GameEvent) => {
     if (event.type === 'MOTION') {
-      setLatestMotion(event.data);
+      latestMotionRef.current = event.data;
       physicsRef.current.processMotionPacket(
         event.data,
         settingsRef.current,
@@ -109,16 +127,17 @@ export const DesktopHost: React.FC = () => {
       switchVehicleModel(event.vehicleId);
       desktopAudio.playVehicleSwap();
     }
-  }, [switchVehicleModel]);
+  };
 
   // Handle baseline zero orientation calibration (Section 3 & 4.2)
   const handleLockBaseline = () => {
-    if (latestMotion) {
-      const newSettings = { ...settings, baselineAlpha: latestMotion.alpha };
+    const motion = latestMotionRef.current;
+    if (motion) {
+      const newSettings = { ...settings, baselineAlpha: motion.alpha };
       handleUpdateSettings(newSettings);
       peerServiceRef.current?.send({
         type: 'CALIBRATE_BASELINE',
-        baselineAlpha: latestMotion.alpha,
+        baselineAlpha: motion.alpha,
       });
     }
   };
@@ -139,31 +158,105 @@ export const DesktopHost: React.FC = () => {
     switchVehicleModel(vehicle.id);
   };
 
-  // Toggle Parent Panel on Esc key
+  // Keyboard controls listener (Arrow Keys & WASD)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setIsParentPanelOpen((prev) => !prev);
+        return;
+      }
+
+      // Ignore driving keys if inside textarea
+      if ((e.target as HTMLElement)?.tagName === 'TEXTAREA' || (e.target as HTMLElement)?.tagName === 'INPUT') {
+        return;
+      }
+
+      switch (e.code) {
+        case 'ArrowUp':
+        case 'KeyW':
+          keyboardStateRef.current.forward = 1;
+          break;
+        case 'ArrowDown':
+        case 'KeyS':
+          keyboardStateRef.current.forward = -1;
+          break;
+        case 'ArrowLeft':
+        case 'KeyA':
+          keyboardStateRef.current.steer = -1;
+          break;
+        case 'ArrowRight':
+        case 'KeyD':
+          keyboardStateRef.current.steer = 1;
+          break;
+        case 'Space':
+          keyboardStateRef.current.jump = true;
+          break;
       }
     };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      switch (e.code) {
+        case 'ArrowUp':
+        case 'KeyW':
+          if (keyboardStateRef.current.forward === 1) keyboardStateRef.current.forward = 0;
+          break;
+        case 'ArrowDown':
+        case 'KeyS':
+          if (keyboardStateRef.current.forward === -1) keyboardStateRef.current.forward = 0;
+          break;
+        case 'ArrowLeft':
+        case 'KeyA':
+          if (keyboardStateRef.current.steer === -1) keyboardStateRef.current.steer = 0;
+          break;
+        case 'ArrowRight':
+        case 'KeyD':
+          if (keyboardStateRef.current.steer === 1) keyboardStateRef.current.steer = 0;
+          break;
+        case 'Space':
+          keyboardStateRef.current.jump = false;
+          break;
+      }
+    };
+
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
   }, []);
 
-  // Initialize WebRTC Host
+  // Initialize WebRTC Host ONCE on mount
   useEffect(() => {
     const peer = new PeerService();
     peerServiceRef.current = peer;
 
     peer
-      .initHost(handleClientEvent, (state) => setConnectionState(state))
+      .initHost(
+        (event) => {
+          clientEventRef.current?.(event);
+        },
+        (state) => setConnectionState(state)
+      )
       .then((id) => setSessionId(id))
       .catch((err) => console.error('Failed to init Peer host:', err));
 
     return () => {
       peer.destroy();
     };
-  }, [handleClientEvent]);
+  }, []); // Run ONCE on mount
+
+  // Low-frequency UI telemetry update interval (5 Hz)
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (latestMotionRef.current) {
+        setParentPanelMotion({ ...latestMotionRef.current });
+      }
+      setDisplaySpeed(Math.round(Math.abs(physicsRef.current.speed * 3.6))); // km/h
+    }, 200);
+
+    return () => clearInterval(timer);
+  }, []);
 
   // Initialize Desktop Audio on first click
   useEffect(() => {
@@ -175,7 +268,7 @@ export const DesktopHost: React.FC = () => {
     return () => window.removeEventListener('click', unlockAudio);
   }, []);
 
-  // Three.js Render Loop & Scene Setup
+  // Three.js Render Loop & Scene Setup (Runs ONCE on mount)
   useEffect(() => {
     const container = canvasMountRef.current;
     if (!container) return;
@@ -248,19 +341,6 @@ export const DesktopHost: React.FC = () => {
     const worldGen = new WorldGenerator(scene);
     worldGenRef.current = worldGen;
 
-    // Contact Shadow Plane under car
-    const contactShadowGeo = new THREE.PlaneGeometry(3.6, 5.0);
-    contactShadowGeo.rotateX(-Math.PI / 2);
-    const contactShadowMat = new THREE.MeshBasicMaterial({
-      color: 0x000000,
-      transparent: true,
-      opacity: 0.35,
-      depthWrite: false,
-    });
-    const contactShadow = new THREE.Mesh(contactShadowGeo, contactShadowMat);
-    contactShadow.position.y = 0.02;
-    vehicleRoot.add(contactShadow);
-
     // Handle Window Resize
     const handleResize = () => {
       if (!container) return;
@@ -280,7 +360,19 @@ export const DesktopHost: React.FC = () => {
       const delta = Math.min(0.05, clock.getDelta());
       const elapsed = clock.getElapsedTime();
 
-      // 1. Advance physics simulation
+      // 1. Apply keyboard controls if active
+      const kb = keyboardStateRef.current;
+      if (kb.forward !== 0 || kb.steer !== 0 || kb.jump) {
+        physicsRef.current.applyKeyboardInput(
+          kb.forward,
+          kb.steer,
+          kb.jump,
+          settingsRef.current,
+          () => desktopAudio.playJump()
+        );
+      }
+
+      // 2. Advance physics simulation
       const physics = physicsRef.current;
       physics.tick(delta, vehicleRoot, () => {
         // Landing bump
@@ -290,7 +382,7 @@ export const DesktopHost: React.FC = () => {
         });
       });
 
-      // 2. Non-blocking Obstacle Collisions check
+      // 3. Non-blocking Obstacle Collisions check
       worldGen.checkCollisions(physics.position, 2.2, (severity) => {
         desktopAudio.playCrash(severity);
         // Send vibration packet to mobile over WebRTC
@@ -300,11 +392,11 @@ export const DesktopHost: React.FC = () => {
         });
       });
 
-      // 3. Update procedural chunks around vehicle
+      // 4. Update procedural chunks around vehicle
       worldGen.updateChunks(physics.position, settingsRef.current.groundDensity);
       worldGen.tick(delta, elapsed);
 
-      // 4. Update Sun light position to follow vehicle for crisp shadows
+      // 5. Update Sun light position to follow vehicle for crisp shadows
       sunLight.position.set(
         physics.position.x + 40,
         60,
@@ -313,7 +405,7 @@ export const DesktopHost: React.FC = () => {
       sunLight.target.position.copy(physics.position);
       sunLight.target.updateMatrixWorld();
 
-      // 5. Translating Non-Rotating Overhead Camera (Section 3)
+      // 6. Translating Non-Rotating Overhead Camera (Section 3)
       if (settingsRef.current.cameraMode === 'overhead') {
         // Fixed cardinal north view (looking slightly forward/down, no yaw rotation)
         const targetCamX = physics.position.x;
@@ -358,7 +450,7 @@ export const DesktopHost: React.FC = () => {
         container.removeChild(renderer.domElement);
       }
     };
-  }, [switchVehicleModel]);
+  }, []); // Run ONCE on mount!
 
   return (
     <div className="relative w-full h-full overflow-hidden select-none bg-sky-200">
@@ -382,7 +474,7 @@ export const DesktopHost: React.FC = () => {
 
       {/* Floating Bottom Quick HUD (Collapsible / Unobtrusive as per skill) */}
       <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 pointer-events-none">
-        <div className="flex items-center gap-3 px-5 py-2.5 bg-white/85 dark:bg-slate-900/85 backdrop-blur-md rounded-2xl shadow-xl border border-white/40 dark:border-slate-800 pointer-events-auto">
+        <div className="flex items-center gap-3 px-5 py-2.5 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md rounded-2xl shadow-xl border border-white/40 dark:border-slate-800 pointer-events-auto">
           <div className="flex items-center gap-2 text-xs font-bold text-slate-800 dark:text-slate-100">
             <Car className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
             <span>
@@ -392,10 +484,21 @@ export const DesktopHost: React.FC = () => {
 
           <span className="text-slate-300 dark:text-slate-700">|</span>
 
+          {/* Speed Indicator */}
+          <div className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400">
+            <Gauge className="w-3.5 h-3.5 text-amber-500" />
+            <span className="font-mono font-bold text-slate-800 dark:text-slate-200">
+              {displaySpeed} km/h
+            </span>
+          </div>
+
+          <span className="text-slate-300 dark:text-slate-700">|</span>
+
+          {/* Connection Status */}
           <div className="text-xs text-slate-600 dark:text-slate-400 flex items-center gap-1.5">
-            <span>Tabletop Steering:</span>
+            <Wifi className={`w-3.5 h-3.5 ${connectionState === 'connected' ? 'text-emerald-500' : 'text-slate-400'}`} />
             <span className="font-semibold text-slate-800 dark:text-slate-200">
-              {connectionState === 'connected' ? 'Active' : 'Awaiting Phone'}
+              {connectionState === 'connected' ? 'Phone Paired' : 'WASD or Scan QR'}
             </span>
           </div>
 
@@ -415,7 +518,7 @@ export const DesktopHost: React.FC = () => {
         onClose={() => setIsParentPanelOpen(false)}
         settings={settings}
         onUpdateSettings={handleUpdateSettings}
-        latestMotion={latestMotion}
+        latestMotion={parentPanelMotion}
         onLockBaseline={handleLockBaseline}
         onResetSpawn={handleResetSpawn}
         onAddCustomVehicle={handleAddCustomVehicle}

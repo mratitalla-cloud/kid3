@@ -10,6 +10,8 @@ export interface MotionPacket {
   accelX: number;     // Linear acceleration X (m/s^2)
   accelY: number;     // Linear acceleration Y (forward/backward push)
   accelZ: number;     // Linear acceleration Z (vertical lift for jump)
+  throttle?: number;  // Direct gas / push input (-1.0 to 1.0)
+  isDriving?: boolean;
   timestamp: number;
 }
 

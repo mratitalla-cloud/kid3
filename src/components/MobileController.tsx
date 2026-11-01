@@ -5,11 +5,11 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { PeerService, ConnectionState } from '../services/peerService';
-import { GameEvent, MotionPacket, CollisionSeverity } from '../types/game';
+import { GameEvent, MotionPacket } from '../types/game';
 import { BUILTIN_VEHICLES, VehicleItem } from '../vehicles/roster';
 import { mobileAudio } from '../services/audioService';
 import { HapticsService } from '../services/hapticsService';
-import { Volume2, VolumeX, Car, Sparkles, WifiOff, RefreshCw } from 'lucide-react';
+import { Volume2, VolumeX, Car, Sparkles, WifiOff, Zap } from 'lucide-react';
 
 interface MobileControllerProps {
   sessionId: string;
@@ -23,8 +23,10 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
   const [isSlideAnimating, setIsSlideAnimating] = useState(false);
   const [slideDirection, setSlideDirection] = useState<'left' | 'right'>('right');
   const [isAudioMuted, setIsAudioMuted] = useState(false);
+  const [isTouchingDrive, setIsTouchingDrive] = useState(false);
 
   const peerServiceRef = useRef<PeerService | null>(null);
+  const isTouchingDriveRef = useRef(false);
   const motionPacketRef = useRef<MotionPacket>({
     alpha: 0,
     beta: 0,
@@ -32,16 +34,18 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
     accelX: 0,
     accelY: 0,
     accelZ: 0,
+    throttle: 0,
+    isDriving: false,
     timestamp: 0,
   });
 
-  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+  const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
   const streamIntervalRef = useRef<number | null>(null);
 
   const activeVehicle = vehicles[currentVehicleIndex] || vehicles[0];
 
-  // Toddler-proof input lock: prevent right-click context menu and gestures
+  // Toddler-proof input lock: prevent right-click context menu and navigation
   useEffect(() => {
     const preventDefault = (e: Event) => e.preventDefault();
     window.addEventListener('contextmenu', preventDefault);
@@ -62,9 +66,7 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
   const handleHostEvent = useCallback((event: GameEvent) => {
     if (event.type === 'COLLISION_TRIGGER') {
       HapticsService.trigger(event.severity, true, 1.0);
-      if (event.severity === 'landing') {
-        // Landing bump
-      } else {
+      if (event.severity !== 'landing') {
         mobileAudio.playCrash(event.severity);
       }
     } else if (event.type === 'SWAP_VEHICLE') {
@@ -130,7 +132,7 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
         await screen.orientation.lock('portrait');
       }
     } catch {
-      // Orientation lock not supported on all mobile browsers
+      // Ignore
     }
 
     // 4. Screen Wake Lock
@@ -142,10 +144,7 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
     };
     if (typeof DeviceOrientation?.requestPermission === 'function') {
       try {
-        const perm = await DeviceOrientation.requestPermission();
-        if (perm !== 'granted') {
-          console.warn('DeviceOrientation permission was denied.');
-        }
+        await DeviceOrientation.requestPermission();
       } catch (err) {
         console.warn('Orientation permission prompt failed:', err);
       }
@@ -171,17 +170,24 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
       window.clearInterval(streamIntervalRef.current);
     }
     streamIntervalRef.current = window.setInterval(() => {
+      const isDriving = isTouchingDriveRef.current;
+      const packet: MotionPacket = {
+        ...motionPacketRef.current,
+        isDriving,
+        throttle: isDriving ? 1.0 : (motionPacketRef.current.throttle || 0),
+        timestamp: performance.now(),
+      };
+
       if (peerServiceRef.current?.isConnected()) {
-        const packet = { ...motionPacketRef.current, timestamp: performance.now() };
         peerServiceRef.current.send({
           type: 'MOTION',
           data: packet,
         });
-
-        // Modulate local engine audio based on motion push
-        const speedEstimate = Math.abs(packet.accelY) * 0.8;
-        mobileAudio.updateEngineSpeed(speedEstimate);
       }
+
+      // Modulate local engine audio based on motion push or touch drive
+      const speedEstimate = isDriving ? 1.5 : Math.max(0, Math.abs(packet.accelY) * 0.8);
+      mobileAudio.updateEngineSpeed(speedEstimate);
     }, 1000 / 60);
 
     setHasStarted(true);
@@ -192,43 +198,75 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
     let alpha = e.alpha ?? 0;
     const iosEvent = e as unknown as { webkitCompassHeading?: number };
     if (iosEvent.webkitCompassHeading !== undefined) {
-      // iOS compass heading
       alpha = iosEvent.webkitCompassHeading;
     }
 
-    motionPacketRef.current.alpha = alpha;
-    motionPacketRef.current.beta = e.beta ?? 0;
-    motionPacketRef.current.gamma = e.gamma ?? 0;
-  };
+    const beta = e.beta ?? 0;
+    const gamma = e.gamma ?? 0;
 
-  const handleDeviceMotion = (e: DeviceMotionEvent) => {
-    const acc = e.acceleration || e.accelerationIncludingGravity;
-    if (acc) {
-      motionPacketRef.current.accelX = acc.x ?? 0;
-      motionPacketRef.current.accelY = acc.y ?? 0;
-      motionPacketRef.current.accelZ = acc.z ?? 0;
+    motionPacketRef.current.alpha = alpha;
+    motionPacketRef.current.beta = beta;
+    motionPacketRef.current.gamma = gamma;
+
+    // If phone is tilted forward (e.g. pushing phone down table), calculate throttle
+    if (beta > 8 && beta < 65) {
+      motionPacketRef.current.throttle = Math.min(1.0, (beta - 8) / 25);
+    } else if (beta < -10 && beta > -65) {
+      motionPacketRef.current.throttle = Math.max(-0.6, (beta + 10) / 25);
+    } else if (!isTouchingDriveRef.current) {
+      motionPacketRef.current.throttle = 0;
     }
   };
 
-  // Horizontal Swipe Switcher (Section 4.A)
+  const handleDeviceMotion = (e: DeviceMotionEvent) => {
+    // Robust detection: e.acceleration properties might be null on some devices
+    let ax = e.acceleration?.x;
+    let ay = e.acceleration?.y;
+    let az = e.acceleration?.z;
+
+    const hasAcc = ax !== null && ax !== undefined && ay !== null && ay !== undefined;
+    if (!hasAcc || (ax === 0 && ay === 0 && az === 0)) {
+      // Fallback to accelerationIncludingGravity
+      const g = e.accelerationIncludingGravity;
+      if (g && g.x !== null && g.y !== null) {
+        ax = g.x ?? 0;
+        ay = g.y ?? 0;
+        az = (g.z ?? 9.8) - 9.8; // Gravity offset when flat
+      }
+    }
+
+    motionPacketRef.current.accelX = ax ?? 0;
+    motionPacketRef.current.accelY = ay ?? 0;
+    motionPacketRef.current.accelZ = az ?? 0;
+  };
+
+  // Horizontal Swipe Switcher & Touch-Drive ("Hold Screen to Vroom")
   const handleTouchStart = (e: React.TouchEvent) => {
     if (e.touches.length > 0) {
       touchStartRef.current = {
         x: e.touches[0].clientX,
         y: e.touches[0].clientY,
+        time: Date.now(),
       };
+      // When touching the screen, activate drive throttle
+      setIsTouchingDrive(true);
+      isTouchingDriveRef.current = true;
     }
   };
 
   const handleTouchEnd = (e: React.TouchEvent) => {
+    setIsTouchingDrive(false);
+    isTouchingDriveRef.current = false;
+
     if (!touchStartRef.current || e.changedTouches.length === 0) return;
 
     const deltaX = e.changedTouches[0].clientX - touchStartRef.current.x;
     const deltaY = e.changedTouches[0].clientY - touchStartRef.current.y;
+    const duration = Date.now() - touchStartRef.current.time;
     touchStartRef.current = null;
 
-    // Minimum swipe threshold 45px, predominantly horizontal
-    if (Math.abs(deltaX) > 45 && Math.abs(deltaX) > Math.abs(deltaY) * 1.5) {
+    // Swipe detection: swipe threshold > 40px and faster than 500ms
+    if (Math.abs(deltaX) > 40 && Math.abs(deltaX) > Math.abs(deltaY) * 1.3 && duration < 600) {
       if (deltaX > 0) {
         // Swiped Right -> Previous vehicle
         triggerVehicleSwap('right', -1);
@@ -342,13 +380,20 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
         <div className="flex items-center gap-2">
           {connectionState === 'connected' ? (
             <div className="flex items-center gap-1.5 px-3 py-1 bg-emerald-500/20 border border-emerald-500/40 rounded-full text-emerald-400 text-xs font-semibold backdrop-blur-sm">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="w-2 h-2 rounded-full bg-emerald-400" />
               <span>DRIVING LIVE</span>
             </div>
           ) : (
             <div className="flex items-center gap-1.5 px-3 py-1 bg-amber-500/20 border border-amber-500/40 rounded-full text-amber-400 text-xs font-semibold backdrop-blur-sm">
               <WifiOff className="w-3.5 h-3.5" />
               <span>RECONNECTING...</span>
+            </div>
+          )}
+
+          {isTouchingDrive && (
+            <div className="flex items-center gap-1 px-2.5 py-0.5 bg-amber-500/30 border border-amber-400/50 rounded-full text-amber-300 text-xs font-bold animate-pulse">
+              <Zap className="w-3.5 h-3.5 text-amber-300" />
+              <span>VROOM!</span>
             </div>
           )}
         </div>
@@ -365,7 +410,13 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
       {/* Prominent Top-Down Vehicle Display (~80% Screen) with Swipe Transitions */}
       <div className="relative flex-1 w-full max-w-sm flex items-center justify-center p-4">
         {/* Subtle ground dirt road texture under vehicle */}
-        <div className="absolute inset-x-8 inset-y-12 bg-amber-950/20 rounded-3xl border-2 border-dashed border-amber-500/10" />
+        <div
+          className={`absolute inset-x-8 inset-y-12 rounded-3xl border-2 transition-all ${
+            isTouchingDrive
+              ? 'bg-amber-500/10 border-amber-400/40 shadow-2xl scale-105'
+              : 'bg-amber-950/20 border-dashed border-amber-500/10'
+          }`}
+        />
 
         <div
           className={`w-full h-full flex items-center justify-center transition-transform duration-300 ${
@@ -386,8 +437,8 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
 
       {/* Subtle Bottom Instruction Indicator */}
       <div className="w-full pb-6 px-6 text-center z-20 pointer-events-none">
-        <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-white/10 backdrop-blur-sm rounded-full text-white/60 text-xs font-medium">
-          <span>Swipe Left / Right to Change Car</span>
+        <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-white/10 backdrop-blur-sm rounded-full text-white/70 text-xs font-medium">
+          <span>{isTouchingDrive ? 'Pushing Forward!' : 'Hold screen or slide on table to drive • Swipe to swap'}</span>
         </div>
       </div>
     </div>

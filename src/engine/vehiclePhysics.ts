@@ -11,7 +11,7 @@ export class VehiclePhysics {
   public velocity = new THREE.Vector3(0, 0, 0);
   public headingAngle = 0; // Target yaw in radians
   public currentYaw = 0;   // Smoothed yaw in radians
-  public speed = 0;        // Forward speed
+  public speed = 0;        // Current forward speed (m/s)
   public verticalSpeed = 0;
   public isGrounded = true;
   public isFlipped = false;
@@ -19,7 +19,6 @@ export class VehiclePhysics {
   // LERP Targets from network packets
   private targetYaw = 0;
   private targetSpeed = 0;
-  private lastPacketTimestamp = 0;
   private jumpCooldown = 0;
 
   // Wheel and propeller references for visual animation
@@ -35,6 +34,8 @@ export class VehiclePhysics {
     this.isGrounded = true;
     this.isFlipped = false;
     this.targetSpeed = 0;
+    this.targetYaw = 0;
+    this.currentYaw = 0;
   }
 
   /**
@@ -46,8 +47,6 @@ export class VehiclePhysics {
     onJump?: () => void,
     onFlip?: (severity: CollisionSeverity) => void
   ): void {
-    this.lastPacketTimestamp = performance.now();
-
     // 1. Flip Detection (Tilt > 80 degrees)
     const tiltMag = Math.max(Math.abs(packet.beta), Math.abs(packet.gamma));
     if (tiltMag > 80) {
@@ -65,7 +64,7 @@ export class VehiclePhysics {
     if (this.isFlipped) return;
 
     // 2. Tabletop Z-Axis Alignment (Steering Yaw)
-    // Angle relative to parent-calibrated baseline forward
+    // Relative to parent-calibrated baseline forward
     let deltaAngle = (packet.alpha - settings.baselineAlpha + 360) % 360;
     if (deltaAngle > 180) deltaAngle -= 360;
 
@@ -77,27 +76,45 @@ export class VehiclePhysics {
     // Convert degrees to radians (negative for Three.js coordinate system where -Z is forward)
     this.targetYaw = (-deltaAngle * Math.PI) / 180;
 
-    // 3. Longitudinal Push/Pull Acceleration (Sliding phone across table)
-    // Positive accelY pushes forward, negative pulls back
-    const pushY = packet.accelY || 0;
-    const accelThreshold = 0.4;
+    // 3. Longitudinal Acceleration & Push Propulsion
+    let forwardDemand = 0;
 
-    if (Math.abs(pushY) > accelThreshold) {
-      const pushMagnitude = (pushY - Math.sign(pushY) * accelThreshold) * settings.sensitivity;
-      this.targetSpeed += pushMagnitude * 0.4;
-    } else {
-      // Gentle decay when not actively pushed
-      this.targetSpeed *= 0.95;
+    // A. Explicit Throttle (Touch-drive / screen hold / button)
+    if (packet.throttle !== undefined && Math.abs(packet.throttle) > 0.05) {
+      forwardDemand = packet.throttle * 16.0 * settings.sensitivity;
+    } else if (packet.isDriving) {
+      forwardDemand = 14.0 * settings.sensitivity;
     }
 
-    // Clamp speed based on vehicle limits
+    // B. Physical Sliding Acceleration (Accelerometer Y-push across table)
+    const pushY = packet.accelY || 0;
+    if (Math.abs(pushY) > 0.25) {
+      const impulse = (pushY - Math.sign(pushY) * 0.25) * 3.5 * settings.sensitivity;
+      this.targetSpeed += impulse;
+    }
+
+    // C. Forward Tilt (Pitch beta forward push)
+    if (packet.beta > 6 && packet.beta < 70) {
+      const tiltDrive = ((packet.beta - 6) / 30) * 14.0 * settings.sensitivity;
+      forwardDemand = Math.max(forwardDemand, Math.min(22.0, tiltDrive));
+    } else if (packet.beta < -12 && packet.beta > -70) {
+      // Reverse tilt
+      const revDrive = ((packet.beta + 12) / 30) * 8.0 * settings.sensitivity;
+      forwardDemand = Math.min(forwardDemand, Math.max(-8.0, revDrive));
+    }
+
+    if (forwardDemand !== 0) {
+      this.targetSpeed = THREE.MathUtils.damp(this.targetSpeed, forwardDemand, 6.0, 0.05);
+    }
+
+    // Clamp speed between reverse and top speed
     this.targetSpeed = THREE.MathUtils.clamp(this.targetSpeed, -8, 28);
 
     // 4. Momentum-Preserving Jump System (Upward lift/tap Z-axis impulse)
     const liftZ = packet.accelZ || 0;
     const now = performance.now();
 
-    if (liftZ > 5.5 && this.isGrounded && now - this.jumpCooldown > 800) {
+    if (liftZ > 4.5 && this.isGrounded && now - this.jumpCooldown > 800) {
       this.verticalSpeed = 12.0; // Jump impulse
       this.isGrounded = false;
       this.jumpCooldown = now;
@@ -106,7 +123,34 @@ export class VehiclePhysics {
   }
 
   /**
-   * 60 FPS physics tick with exponential LERP smoothing
+   * Keyboard controls fallback for desktop testing / parents
+   */
+  public applyKeyboardInput(
+    forward: number, // -1 (back) to +1 (forward)
+    steer: number,   // -1 (left) to +1 (right)
+    jump: boolean,
+    settings: ParentSettings,
+    onJump?: () => void
+  ): void {
+    if (steer !== 0) {
+      this.targetYaw += -steer * 0.045 * settings.sensitivity;
+    }
+
+    if (forward !== 0) {
+      const target = forward > 0 ? 15.0 * settings.sensitivity : -6.0;
+      this.targetSpeed = THREE.MathUtils.damp(this.targetSpeed, target, 5.0, 0.03);
+    }
+
+    if (jump && this.isGrounded && performance.now() - this.jumpCooldown > 700) {
+      this.verticalSpeed = 12.0;
+      this.isGrounded = false;
+      this.jumpCooldown = performance.now();
+      if (onJump) onJump();
+    }
+  }
+
+  /**
+   * 60 FPS physics tick with exponential LERP smoothing & rolling toy friction
    */
   public tick(
     delta: number,
@@ -115,15 +159,16 @@ export class VehiclePhysics {
   ): void {
     // 1. Smooth yaw with angle wrap handling
     const diff = (this.targetYaw - this.currentYaw + Math.PI * 3) % (Math.PI * 2) - Math.PI;
-    this.currentYaw += diff * Math.min(1.0, delta * 12.0); // Silky exponential LERP
+    this.currentYaw += diff * Math.min(1.0, delta * 14.0); // Responsive, smooth heading
 
     // 2. Smooth forward speed LERP
-    this.speed = THREE.MathUtils.damp(this.speed, this.targetSpeed, 7.0, delta);
+    this.speed = THREE.MathUtils.damp(this.speed, this.targetSpeed, 5.0, delta);
 
-    // Natural friction
-    this.targetSpeed *= Math.exp(-0.6 * delta);
+    // Gentle natural rolling momentum (coasts for 4-5 seconds like a real toy car)
+    this.targetSpeed *= Math.exp(-0.45 * delta);
 
     // 3. Position update along current heading
+    // In Three.js -Z is forward
     const forwardX = -Math.sin(this.currentYaw);
     const forwardZ = -Math.cos(this.currentYaw);
 
@@ -132,7 +177,7 @@ export class VehiclePhysics {
 
     // 4. Vertical physics & Jump handling (Zero forward speed loss)
     if (!this.isGrounded) {
-      this.verticalSpeed -= 28.0 * delta; // Gravity
+      this.verticalSpeed -= 26.0 * delta; // Gravity
       this.position.y += this.verticalSpeed * delta;
 
       if (this.position.y <= 0) {
@@ -152,7 +197,7 @@ export class VehiclePhysics {
       rootGroup.rotation.z = THREE.MathUtils.damp(rootGroup.rotation.z, 1.4, 8.0, delta);
     } else {
       // Subtle cartoon chassis roll into turns
-      const turnRoll = -diff * (this.speed / 15);
+      const turnRoll = -diff * Math.min(1.0, Math.abs(this.speed) / 12);
       rootGroup.rotation.z = THREE.MathUtils.damp(rootGroup.rotation.z, turnRoll, 10.0, delta);
     }
 
@@ -166,7 +211,7 @@ export class VehiclePhysics {
 
     // 7. Animate Spinning Propeller
     if (this.propeller) {
-      this.propeller.rotation.z += (20 + Math.abs(this.speed) * 2) * delta;
+      this.propeller.rotation.z += (20 + Math.abs(this.speed) * 3) * delta;
     }
   }
 }
