@@ -374,13 +374,19 @@ export const DesktopHost: React.FC = () => {
 
       // 2. Advance physics simulation
       const physics = physicsRef.current;
-      physics.tick(delta, vehicleRoot, () => {
-        // Landing bump
-        peerServiceRef.current?.send({
-          type: 'COLLISION_TRIGGER',
-          severity: 'landing',
-        });
-      });
+      physics.tick(
+        delta,
+        vehicleRoot,
+        settingsRef.current.autoCruise,
+        settingsRef.current.cruiseSpeed,
+        () => {
+          // Landing bump
+          peerServiceRef.current?.send({
+            type: 'COLLISION_TRIGGER',
+            severity: 'landing',
+          });
+        }
+      );
 
       // 3. Non-blocking Obstacle Collisions check
       worldGen.checkCollisions(physics.position, 2.2, (severity) => {
@@ -494,11 +500,29 @@ export const DesktopHost: React.FC = () => {
 
           <span className="text-slate-300 dark:text-slate-700">|</span>
 
-          {/* Connection Status */}
+          {/* Auto-Cruise Quick Toggle Requested by User */}
+          <button
+            onClick={() => handleUpdateSettings({ ...settings, autoCruise: !settings.autoCruise })}
+            className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold rounded-lg transition-colors ${
+              settings.autoCruise
+                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700'
+                : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
+            }`}
+            title="When active, car drives forward at a steady speed. Pushing phone on table gives a speed boost!"
+          >
+            <span>Auto-Cruise:</span>
+            <span className="uppercase">{settings.autoCruise ? 'ON' : 'OFF'}</span>
+          </button>
+
+          <span className="text-slate-300 dark:text-slate-700">|</span>
+
+          {/* Connection & Live Steering Status */}
           <div className="text-xs text-slate-600 dark:text-slate-400 flex items-center gap-1.5">
             <Wifi className={`w-3.5 h-3.5 ${connectionState === 'connected' ? 'text-emerald-500' : 'text-slate-400'}`} />
             <span className="font-semibold text-slate-800 dark:text-slate-200">
-              {connectionState === 'connected' ? 'Phone Paired' : 'WASD or Scan QR'}
+              {connectionState === 'connected'
+                ? `Phone Paired (${parentPanelMotion ? Math.round(parentPanelMotion.alpha) + '°' : 'Steering Ready'})`
+                : 'WASD or Scan QR'}
             </span>
           </div>
 

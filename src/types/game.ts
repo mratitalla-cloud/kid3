@@ -50,6 +50,8 @@ export interface ParentSettings {
   hapticIntensity: number;     // 0.5 - 1.5
   baselineAlpha: number;       // Zero orientation angle
   activeVehicleIds: string[];  // Which vehicles appear in mobile swipe
+  autoCruise: boolean;         // Constant stable speed so kid doesn't have to press phone
+  cruiseSpeed: number;         // Stable cruise speed (4 - 20 m/s)
 }
 
 export const DEFAULT_PARENT_SETTINGS: ParentSettings = {
@@ -65,4 +67,6 @@ export const DEFAULT_PARENT_SETTINGS: ParentSettings = {
   hapticIntensity: 1.0,
   baselineAlpha: 0,
   activeVehicleIds: ['roadster', 'steam_train', 'biplane', 'digger'],
+  autoCruise: true,
+  cruiseSpeed: 10,
 };

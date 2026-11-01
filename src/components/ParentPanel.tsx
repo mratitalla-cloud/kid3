@@ -220,6 +220,55 @@ export const ParentPanel: React.FC<ParentPanelProps> = ({
 
               {/* Sliders & Thresholds */}
               <div className="space-y-4">
+                {/* Auto-Cruise Setting Requested by User */}
+                <div className="p-3 bg-indigo-50/70 dark:bg-indigo-950/40 rounded-xl border border-indigo-200 dark:border-indigo-800">
+                  <div className="flex items-center justify-between mb-2">
+                    <div>
+                      <div className="text-xs font-bold text-indigo-950 dark:text-indigo-200">
+                        Auto-Cruise Drive Mode
+                      </div>
+                      <div className="text-[11px] text-indigo-700 dark:text-indigo-300">
+                        Car drives forward at a steady speed. Pushing phone on table gives a temporary boost!
+                      </div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={settings.autoCruise}
+                      onChange={(e) =>
+                        onUpdateSettings({ ...settings, autoCruise: e.target.checked })
+                      }
+                      className="w-5 h-5 accent-indigo-600 rounded"
+                    />
+                  </div>
+
+                  {settings.autoCruise && (
+                    <div className="mt-3 pt-2 border-t border-indigo-200/60 dark:border-indigo-800/60">
+                      <div className="flex justify-between text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                        <span>Cruise Speed</span>
+                        <span className="font-mono tabular-nums font-bold">
+                          {Math.round(settings.cruiseSpeed * 3.6)} km/h ({settings.cruiseSpeed} m/s)
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min="5"
+                        max="20"
+                        step="1"
+                        value={settings.cruiseSpeed}
+                        onChange={(e) =>
+                          onUpdateSettings({ ...settings, cruiseSpeed: Number(e.target.value) })
+                        }
+                        className="w-full accent-indigo-600"
+                      />
+                      <div className="flex justify-between text-[10px] text-slate-500 mt-0.5">
+                        <span>Gentle (18 km/h)</span>
+                        <span>Cruising (36 km/h)</span>
+                        <span>Fast (72 km/h)</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 <div>
                   <div className="flex justify-between text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
                     <span>Deadzone Angle Filter</span>
@@ -243,7 +292,7 @@ export const ParentPanel: React.FC<ParentPanelProps> = ({
 
                 <div>
                   <div className="flex justify-between text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
-                    <span>Acceleration Sensitivity</span>
+                    <span>Push Boost & Acceleration Sensitivity</span>
                     <span className="font-mono tabular-nums">{settings.sensitivity.toFixed(1)}x</span>
                   </div>
                   <input
@@ -258,7 +307,7 @@ export const ParentPanel: React.FC<ParentPanelProps> = ({
                     className="w-full accent-indigo-600"
                   />
                   <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                    How fast the car speeds up when sliding phone across the table.
+                    How much temporary speed boost the car gets when slid across the table.
                   </p>
                 </div>
 
