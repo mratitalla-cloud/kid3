@@ -1,0 +1,426 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import React, { useEffect, useRef, useState, useCallback } from 'react';
+import * as THREE from 'three';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { PeerService, ConnectionState } from '../services/peerService';
+import {
+  ParentSettings,
+  DEFAULT_PARENT_SETTINGS,
+  GameEvent,
+  MotionPacket,
+  CollisionSeverity,
+} from '../types/game';
+import { BUILTIN_VEHICLES, VehicleItem, VehicleMeshBundle } from '../vehicles/roster';
+import { WorldGenerator } from '../engine/worldGenerator';
+import { VehiclePhysics } from '../engine/vehiclePhysics';
+import { QRCodeOverlay } from './QRCodeOverlay';
+import { ParentPanel } from './ParentPanel';
+import { desktopAudio } from '../services/audioService';
+import { Settings, RefreshCw, Car } from 'lucide-react';
+
+const STORAGE_KEY = 'toddler_drive_parent_settings_v1';
+
+export const DesktopHost: React.FC = () => {
+  const canvasMountRef = useRef<HTMLDivElement>(null);
+  const [sessionId, setSessionId] = useState<string>('');
+  const [connectionState, setConnectionState] = useState<ConnectionState>('disconnected');
+  const [isParentPanelOpen, setIsParentPanelOpen] = useState(false);
+  const [vehicles, setVehicles] = useState<VehicleItem[]>(BUILTIN_VEHICLES);
+  const [activeVehicleId, setActiveVehicleId] = useState<string>('roadster');
+  const [latestMotion, setLatestMotion] = useState<MotionPacket | null>(null);
+
+  // Settings from localStorage with fallback to default
+  const [settings, setSettings] = useState<ParentSettings>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) return { ...DEFAULT_PARENT_SETTINGS, ...JSON.parse(saved) };
+    } catch {
+      // ignore
+    }
+    return DEFAULT_PARENT_SETTINGS;
+  });
+
+  const peerServiceRef = useRef<PeerService | null>(null);
+  const physicsRef = useRef<VehiclePhysics>(new VehiclePhysics());
+  const worldGenRef = useRef<WorldGenerator | null>(null);
+  const activeVehicleGroupRef = useRef<THREE.Group>(new THREE.Group());
+  const currentBundleRef = useRef<VehicleMeshBundle | null>(null);
+  const settingsRef = useRef<ParentSettings>(settings);
+  settingsRef.current = settings;
+
+  // Save settings on update
+  const handleUpdateSettings = (newSettings: ParentSettings) => {
+    setSettings(newSettings);
+    settingsRef.current = newSettings;
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(newSettings));
+    } catch {
+      // ignore
+    }
+    desktopAudio.setVolume(newSettings.desktopVolume);
+  };
+
+  // Switch 3D vehicle model
+  const switchVehicleModel = useCallback((vehicleId: string) => {
+    const target = vehicles.find((v) => v.id === vehicleId) || vehicles[0];
+    if (!target) return;
+
+    setActiveVehicleId(target.id);
+
+    // Clear previous mesh children
+    while (activeVehicleGroupRef.current.children.length > 0) {
+      activeVehicleGroupRef.current.remove(activeVehicleGroupRef.current.children[0]);
+    }
+
+    const bundle = target.create3D();
+    currentBundleRef.current = bundle;
+    activeVehicleGroupRef.current.add(bundle.root);
+
+    // Link animated parts to physics engine
+    physicsRef.current.wheels = bundle.wheels || [];
+    physicsRef.current.propeller = bundle.propeller || null;
+    physicsRef.current.smokeEmitter = bundle.smokeEmitter || null;
+  }, [vehicles]);
+
+  // Handle incoming game events from mobile controller
+  const handleClientEvent = useCallback((event: GameEvent) => {
+    if (event.type === 'MOTION') {
+      setLatestMotion(event.data);
+      physicsRef.current.processMotionPacket(
+        event.data,
+        settingsRef.current,
+        () => {
+          // Jump trigger
+          desktopAudio.playJump();
+        },
+        (severity) => {
+          // Flip trigger
+          peerServiceRef.current?.send({
+            type: 'COLLISION_TRIGGER',
+            severity,
+          });
+        }
+      );
+    } else if (event.type === 'SWAP_VEHICLE') {
+      switchVehicleModel(event.vehicleId);
+      desktopAudio.playVehicleSwap();
+    }
+  }, [switchVehicleModel]);
+
+  // Handle baseline zero orientation calibration (Section 3 & 4.2)
+  const handleLockBaseline = () => {
+    if (latestMotion) {
+      const newSettings = { ...settings, baselineAlpha: latestMotion.alpha };
+      handleUpdateSettings(newSettings);
+      peerServiceRef.current?.send({
+        type: 'CALIBRATE_BASELINE',
+        baselineAlpha: latestMotion.alpha,
+      });
+    }
+  };
+
+  // Recenter vehicle to spawn (Section 4.3)
+  const handleResetSpawn = () => {
+    physicsRef.current.reset(new THREE.Vector3(0, 0, 0));
+    peerServiceRef.current?.send({ type: 'RESET_SPAWN' });
+  };
+
+  // Add custom imported vehicle from AI generator
+  const handleAddCustomVehicle = (vehicle: VehicleItem) => {
+    setVehicles((prev) => [...prev, vehicle]);
+    handleUpdateSettings({
+      ...settings,
+      activeVehicleIds: [...settings.activeVehicleIds, vehicle.id],
+    });
+    switchVehicleModel(vehicle.id);
+  };
+
+  // Toggle Parent Panel on Esc key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsParentPanelOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  // Initialize WebRTC Host
+  useEffect(() => {
+    const peer = new PeerService();
+    peerServiceRef.current = peer;
+
+    peer
+      .initHost(handleClientEvent, (state) => setConnectionState(state))
+      .then((id) => setSessionId(id))
+      .catch((err) => console.error('Failed to init Peer host:', err));
+
+    return () => {
+      peer.destroy();
+    };
+  }, [handleClientEvent]);
+
+  // Initialize Desktop Audio on first click
+  useEffect(() => {
+    const unlockAudio = () => {
+      desktopAudio.resume();
+      window.removeEventListener('click', unlockAudio);
+    };
+    window.addEventListener('click', unlockAudio);
+    return () => window.removeEventListener('click', unlockAudio);
+  }, []);
+
+  // Three.js Render Loop & Scene Setup
+  useEffect(() => {
+    const container = canvasMountRef.current;
+    if (!container) return;
+
+    // Detect software GL as required by Three.js skill
+    const isSoftwareGl = (() => {
+      const gl = document.createElement('canvas').getContext('webgl2');
+      if (!gl) return true;
+      const ext = gl.getExtension('WEBGL_debug_renderer_info');
+      const param = ext ? ext.UNMASKED_RENDERER_WEBGL : gl.RENDERER;
+      const gpu = String(gl.getParameter(param));
+      gl.getExtension('WEBGL_lose_context')?.loseContext();
+      return /SwiftShader|llvmpipe|softpipe|Software|Basic Render/i.test(gpu);
+    })();
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x93c5fd); // Sunny Countryside blue sky
+    scene.fog = new THREE.FogExp2(0xe0f2fe, 0.012); // Atmospheric horizon fog
+
+    const width = container.clientWidth || window.innerWidth;
+    const height = container.clientHeight || window.innerHeight;
+
+    const camera = new THREE.PerspectiveCamera(52, width / height, 0.5, 300);
+
+    const renderer = new THREE.WebGLRenderer({
+      antialias: !isSoftwareGl,
+      powerPreference: 'high-performance',
+    });
+    renderer.setSize(width, height);
+    renderer.setPixelRatio(isSoftwareGl ? 1 : Math.min(window.devicePixelRatio, 2));
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.15;
+    renderer.shadowMap.enabled = !isSoftwareGl;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+    container.appendChild(renderer.domElement);
+
+    // Mandatory RoomEnvironment PBR Reflection Map
+    const pmremGenerator = new THREE.PMREMGenerator(renderer);
+    scene.environment = pmremGenerator.fromScene(new RoomEnvironment(), 0.04).texture;
+    pmremGenerator.dispose();
+
+    // 3-Point Lighting Rig
+    const sunLight = new THREE.DirectionalLight(0xfffbeb, 1.8);
+    sunLight.position.set(40, 60, 30);
+    sunLight.castShadow = !isSoftwareGl;
+    sunLight.shadow.mapSize.width = 2048;
+    sunLight.shadow.mapSize.height = 2048;
+    sunLight.shadow.camera.near = 10;
+    sunLight.shadow.camera.far = 150;
+    sunLight.shadow.camera.left = -35;
+    sunLight.shadow.camera.right = 35;
+    sunLight.shadow.camera.top = 35;
+    sunLight.shadow.camera.bottom = -35;
+    sunLight.shadow.bias = -0.0005;
+    scene.add(sunLight);
+
+    const hemiLight = new THREE.HemisphereLight(0xdbeafe, 0x15803d, 0.6);
+    scene.add(hemiLight);
+
+    // Add Vehicle Group to scene
+    const vehicleRoot = activeVehicleGroupRef.current;
+    scene.add(vehicleRoot);
+
+    // Initial vehicle model mount
+    switchVehicleModel('roadster');
+
+    // Procedural Sunny Countryside World Generator
+    const worldGen = new WorldGenerator(scene);
+    worldGenRef.current = worldGen;
+
+    // Contact Shadow Plane under car
+    const contactShadowGeo = new THREE.PlaneGeometry(3.6, 5.0);
+    contactShadowGeo.rotateX(-Math.PI / 2);
+    const contactShadowMat = new THREE.MeshBasicMaterial({
+      color: 0x000000,
+      transparent: true,
+      opacity: 0.35,
+      depthWrite: false,
+    });
+    const contactShadow = new THREE.Mesh(contactShadowGeo, contactShadowMat);
+    contactShadow.position.y = 0.02;
+    vehicleRoot.add(contactShadow);
+
+    // Handle Window Resize
+    const handleResize = () => {
+      if (!container) return;
+      const w = container.clientWidth;
+      const h = container.clientHeight;
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+      renderer.setSize(w, h);
+    };
+    window.addEventListener('resize', handleResize);
+
+    // Animation Loop
+    let frameId = 0;
+    const clock = new THREE.Clock();
+
+    const tick = () => {
+      const delta = Math.min(0.05, clock.getDelta());
+      const elapsed = clock.getElapsedTime();
+
+      // 1. Advance physics simulation
+      const physics = physicsRef.current;
+      physics.tick(delta, vehicleRoot, () => {
+        // Landing bump
+        peerServiceRef.current?.send({
+          type: 'COLLISION_TRIGGER',
+          severity: 'landing',
+        });
+      });
+
+      // 2. Non-blocking Obstacle Collisions check
+      worldGen.checkCollisions(physics.position, 2.2, (severity) => {
+        desktopAudio.playCrash(severity);
+        // Send vibration packet to mobile over WebRTC
+        peerServiceRef.current?.send({
+          type: 'COLLISION_TRIGGER',
+          severity,
+        });
+      });
+
+      // 3. Update procedural chunks around vehicle
+      worldGen.updateChunks(physics.position, settingsRef.current.groundDensity);
+      worldGen.tick(delta, elapsed);
+
+      // 4. Update Sun light position to follow vehicle for crisp shadows
+      sunLight.position.set(
+        physics.position.x + 40,
+        60,
+        physics.position.z + 30
+      );
+      sunLight.target.position.copy(physics.position);
+      sunLight.target.updateMatrixWorld();
+
+      // 5. Translating Non-Rotating Overhead Camera (Section 3)
+      if (settingsRef.current.cameraMode === 'overhead') {
+        // Fixed cardinal north view (looking slightly forward/down, no yaw rotation)
+        const targetCamX = physics.position.x;
+        const targetCamY = physics.position.y + 24;
+        const targetCamZ = physics.position.z + 18; // Offset south
+
+        camera.position.x = THREE.MathUtils.damp(camera.position.x, targetCamX, 8.0, delta);
+        camera.position.y = THREE.MathUtils.damp(camera.position.y, targetCamY, 8.0, delta);
+        camera.position.z = THREE.MathUtils.damp(camera.position.z, targetCamZ, 8.0, delta);
+
+        camera.lookAt(physics.position.x, physics.position.y + 0.5, physics.position.z - 2.0);
+      } else {
+        // Optional Chase Camera Mode for older kids
+        const chaseDist = 16;
+        const chaseHeight = 8;
+        const forwardX = -Math.sin(physics.currentYaw);
+        const forwardZ = -Math.cos(physics.currentYaw);
+
+        const targetCamX = physics.position.x - forwardX * chaseDist;
+        const targetCamY = physics.position.y + chaseHeight;
+        const targetCamZ = physics.position.z - forwardZ * chaseDist;
+
+        camera.position.x = THREE.MathUtils.damp(camera.position.x, targetCamX, 6.0, delta);
+        camera.position.y = THREE.MathUtils.damp(camera.position.y, targetCamY, 6.0, delta);
+        camera.position.z = THREE.MathUtils.damp(camera.position.z, targetCamZ, 6.0, delta);
+
+        camera.lookAt(physics.position.x, physics.position.y + 1.2, physics.position.z);
+      }
+
+      // Render
+      renderer.render(scene, camera);
+      frameId = requestAnimationFrame(tick);
+    };
+
+    frameId = requestAnimationFrame(tick);
+
+    return () => {
+      cancelAnimationFrame(frameId);
+      window.removeEventListener('resize', handleResize);
+      renderer.dispose();
+      if (container.contains(renderer.domElement)) {
+        container.removeChild(renderer.domElement);
+      }
+    };
+  }, [switchVehicleModel]);
+
+  return (
+    <div className="relative w-full h-full overflow-hidden select-none bg-sky-200">
+      {/* 3D WebGL Canvas Container */}
+      <div ref={canvasMountRef} className="absolute inset-0 w-full h-full" />
+
+      {/* QR Code Signaling Overlay (Top Left) */}
+      <QRCodeOverlay sessionId={sessionId} connectionState={connectionState} />
+
+      {/* Top Right Quick Bar (Parent Panel Button) */}
+      <div className="absolute top-4 right-4 z-40 flex items-center gap-2">
+        <button
+          onClick={() => setIsParentPanelOpen(true)}
+          className="flex items-center gap-2 px-3 py-1.5 bg-white/90 dark:bg-slate-900/90 hover:bg-white dark:hover:bg-slate-900 text-slate-800 dark:text-slate-200 font-semibold text-xs rounded-full shadow-lg border border-slate-200/60 dark:border-slate-800 transition-all hover:scale-105"
+        >
+          <Settings className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+          <span>Parent Settings</span>
+          <span className="text-[10px] opacity-60 font-mono">[Esc]</span>
+        </button>
+      </div>
+
+      {/* Floating Bottom Quick HUD (Collapsible / Unobtrusive as per skill) */}
+      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 pointer-events-none">
+        <div className="flex items-center gap-3 px-5 py-2.5 bg-white/85 dark:bg-slate-900/85 backdrop-blur-md rounded-2xl shadow-xl border border-white/40 dark:border-slate-800 pointer-events-auto">
+          <div className="flex items-center gap-2 text-xs font-bold text-slate-800 dark:text-slate-100">
+            <Car className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+            <span>
+              {vehicles.find((v) => v.id === activeVehicleId)?.name || 'Toy Vehicle'}
+            </span>
+          </div>
+
+          <span className="text-slate-300 dark:text-slate-700">|</span>
+
+          <div className="text-xs text-slate-600 dark:text-slate-400 flex items-center gap-1.5">
+            <span>Tabletop Steering:</span>
+            <span className="font-semibold text-slate-800 dark:text-slate-200">
+              {connectionState === 'connected' ? 'Active' : 'Awaiting Phone'}
+            </span>
+          </div>
+
+          <button
+            onClick={handleResetSpawn}
+            className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors"
+          >
+            <RefreshCw className="w-3 h-3" />
+            Recenter
+          </button>
+        </div>
+      </div>
+
+      {/* Master Parent Control Panel Modal */}
+      <ParentPanel
+        isOpen={isParentPanelOpen}
+        onClose={() => setIsParentPanelOpen(false)}
+        settings={settings}
+        onUpdateSettings={handleUpdateSettings}
+        latestMotion={latestMotion}
+        onLockBaseline={handleLockBaseline}
+        onResetSpawn={handleResetSpawn}
+        onAddCustomVehicle={handleAddCustomVehicle}
+        activeVehicles={vehicles}
+      />
+    </div>
+  );
+};

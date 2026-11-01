@@ -1,0 +1,538 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import React, { useState } from 'react';
+import {
+  Sliders,
+  RotateCcw,
+  Compass,
+  Volume2,
+  Vibrate,
+  Sparkles,
+  Camera,
+  Layers,
+  ChevronDown,
+  ChevronUp,
+  X,
+  Copy,
+  Check,
+  FileCode,
+} from 'lucide-react';
+import { ParentSettings, MotionPacket } from '../types/game';
+import { BUILTIN_VEHICLES, getAiVehiclePrompt, loadVehicleFromModule, VehicleItem } from '../vehicles/roster';
+
+interface ParentPanelProps {
+  isOpen: boolean;
+  onClose: () => void;
+  settings: ParentSettings;
+  onUpdateSettings: (newSettings: ParentSettings) => void;
+  latestMotion: MotionPacket | null;
+  onLockBaseline: () => void;
+  onResetSpawn: () => void;
+  onAddCustomVehicle: (vehicle: VehicleItem) => void;
+  activeVehicles: VehicleItem[];
+}
+
+export const ParentPanel: React.FC<ParentPanelProps> = ({
+  isOpen,
+  onClose,
+  settings,
+  onUpdateSettings,
+  latestMotion,
+  onLockBaseline,
+  onResetSpawn,
+  onAddCustomVehicle,
+  activeVehicles,
+}) => {
+  const [activeTab, setActiveTab] = useState<'calibration' | 'vehicles' | 'audio' | 'environment'>('calibration');
+  const [customJsCode, setCustomJsCode] = useState('');
+  const [importStatus, setImportStatus] = useState<string | null>(null);
+  const [copiedPrompt, setCopiedPrompt] = useState(false);
+
+  if (!isOpen) return null;
+
+  const currentRelativeAngle = latestMotion
+    ? Math.round(((latestMotion.alpha - settings.baselineAlpha + 360) % 360))
+    : 0;
+
+  const handleCopyAiPrompt = () => {
+    const prompt = getAiVehiclePrompt('A colorful cartoon steam roller with heavy roller drum and cab');
+    navigator.clipboard.writeText(prompt);
+    setCopiedPrompt(true);
+    setTimeout(() => setCopiedPrompt(false), 2000);
+  };
+
+  const handleImportModule = async () => {
+    if (!customJsCode.trim()) return;
+    try {
+      setImportStatus('Loading module...');
+      const vehicle = await loadVehicleFromModule(customJsCode);
+      onAddCustomVehicle(vehicle);
+      setImportStatus(`Successfully added "${vehicle.name}"!`);
+      setCustomJsCode('');
+      setTimeout(() => setImportStatus(null), 3000);
+    } catch (err: unknown) {
+      setImportStatus(`Error: ${(err as Error).message}`);
+    }
+  };
+
+  const toggleVehicleActive = (id: string) => {
+    const current = new Set(settings.activeVehicleIds);
+    if (current.has(id)) {
+      if (current.size > 1) {
+        current.delete(id);
+      }
+    } else {
+      current.add(id);
+    }
+    onUpdateSettings({ ...settings, activeVehicleIds: Array.from(current) });
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center pointer-events-none p-4 md:p-6">
+      {/* Background scrim */}
+      <div
+        className="fixed inset-0 bg-slate-950/40 pointer-events-auto transition-opacity"
+        onClick={onClose}
+      />
+
+      {/* Glassmorphic Parent Control Dock */}
+      <div className="relative w-full max-w-4xl max-h-[85vh] bg-white/95 dark:bg-slate-900/95 backdrop-blur-md rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 pointer-events-auto overflow-hidden flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800">
+          <div className="flex items-center gap-3">
+            <Sliders className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+            <h2 className="text-base font-bold text-slate-900 dark:text-slate-100">
+              Master Parent Control Panel
+            </h2>
+            <span className="text-xs text-slate-500 dark:text-slate-400 font-mono">
+              [Esc to toggle]
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onResetSpawn}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/50 hover:bg-rose-100 dark:hover:bg-rose-900/50 rounded-lg transition-colors"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              Recenter Spawn
+            </button>
+            <button
+              onClick={onClose}
+              className="p-1.5 text-slate-500 hover:text-slate-900 dark:hover:text-slate-100 rounded-lg transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Navigation Tabs */}
+        <div className="flex items-center gap-1 px-6 pt-3 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/30">
+          <button
+            onClick={() => setActiveTab('calibration')}
+            className={`flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-t-lg transition-colors ${
+              activeTab === 'calibration'
+                ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 border-t-2 border-indigo-600 shadow-sm'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+            }`}
+          >
+            <Compass className="w-4 h-4" />
+            Motion & Calibration
+          </button>
+          <button
+            onClick={() => setActiveTab('vehicles')}
+            className={`flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-t-lg transition-colors ${
+              activeTab === 'vehicles'
+                ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 border-t-2 border-indigo-600 shadow-sm'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+            }`}
+          >
+            <Layers className="w-4 h-4" />
+            Vehicle Roster & AI Importer
+          </button>
+          <button
+            onClick={() => setActiveTab('audio')}
+            className={`flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-t-lg transition-colors ${
+              activeTab === 'audio'
+                ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 border-t-2 border-indigo-600 shadow-sm'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+            }`}
+          >
+            <Volume2 className="w-4 h-4" />
+            Audio & Haptics
+          </button>
+          <button
+            onClick={() => setActiveTab('environment')}
+            className={`flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-t-lg transition-colors ${
+              activeTab === 'environment'
+                ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 border-t-2 border-indigo-600 shadow-sm'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+            }`}
+          >
+            <Sparkles className="w-4 h-4" />
+            World & Camera
+          </button>
+        </div>
+
+        {/* Tab Content */}
+        <div className="p-6 overflow-y-auto max-h-[60vh] space-y-6">
+          {activeTab === 'calibration' && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Live Mirror Calibration Visualizer */}
+              <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700/60 flex flex-col items-center">
+                <h3 className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-3">
+                  Live Tabletop Phone Orientation
+                </h3>
+
+                {/* Wireframe Phone Visualizer */}
+                <div className="relative w-40 h-40 flex items-center justify-center my-2">
+                  <div className="absolute inset-0 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-full" />
+                  <div
+                    className="relative w-20 h-32 bg-indigo-500/10 border-2 border-indigo-600 dark:border-indigo-400 rounded-xl flex flex-col items-center justify-between p-2 shadow-lg transition-transform duration-75"
+                    style={{
+                      transform: `rotate(${currentRelativeAngle}deg)`,
+                    }}
+                  >
+                    <div className="w-6 h-1 bg-indigo-600 dark:bg-indigo-400 rounded-full" />
+                    <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400">
+                      FRONT
+                    </span>
+                    <div className="w-2.5 h-2.5 border border-indigo-600 dark:border-indigo-400 rounded-full" />
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-4 text-xs font-mono tabular-nums text-slate-600 dark:text-slate-400 mt-2">
+                  <div>Live Yaw: <span className="font-bold text-slate-900 dark:text-slate-100">{latestMotion ? Math.round(latestMotion.alpha) : 0}°</span></div>
+                  <div>Relative: <span className="font-bold text-indigo-600 dark:text-indigo-400">{currentRelativeAngle}°</span></div>
+                </div>
+
+                <button
+                  onClick={onLockBaseline}
+                  className="mt-4 w-full py-2 px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs rounded-lg shadow-sm transition-colors flex items-center justify-center gap-2"
+                >
+                  <Compass className="w-4 h-4" />
+                  Lock Forward Baseline (0° Zero)
+                </button>
+              </div>
+
+              {/* Sliders & Thresholds */}
+              <div className="space-y-4">
+                <div>
+                  <div className="flex justify-between text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                    <span>Deadzone Angle Filter</span>
+                    <span className="font-mono tabular-nums">{settings.deadzoneAngle}°</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="15"
+                    step="1"
+                    value={settings.deadzoneAngle}
+                    onChange={(e) =>
+                      onUpdateSettings({ ...settings, deadzoneAngle: Number(e.target.value) })
+                    }
+                    className="w-full accent-indigo-600"
+                  />
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                    Filters toddler hand trembling below this threshold.
+                  </p>
+                </div>
+
+                <div>
+                  <div className="flex justify-between text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                    <span>Acceleration Sensitivity</span>
+                    <span className="font-mono tabular-nums">{settings.sensitivity.toFixed(1)}x</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0.5"
+                    max="2.5"
+                    step="0.1"
+                    value={settings.sensitivity}
+                    onChange={(e) =>
+                      onUpdateSettings({ ...settings, sensitivity: Number(e.target.value) })
+                    }
+                    className="w-full accent-indigo-600"
+                  />
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                    How fast the car speeds up when sliding phone across the table.
+                  </p>
+                </div>
+
+                <div className="pt-2 border-t border-slate-200 dark:border-slate-800">
+                  <div className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">
+                    Physical Table Sensor Telemetry
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 text-[11px] font-mono tabular-nums bg-slate-100 dark:bg-slate-800 p-2.5 rounded-lg text-slate-600 dark:text-slate-300">
+                    <div>Tilt X: {latestMotion ? latestMotion.gamma.toFixed(1) : 0}°</div>
+                    <div>Tilt Y: {latestMotion ? latestMotion.beta.toFixed(1) : 0}°</div>
+                    <div>Push Y: {latestMotion ? latestMotion.accelY.toFixed(1) : 0}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'vehicles' && (
+            <div className="space-y-6">
+              {/* Active Vehicles Selection */}
+              <div>
+                <h3 className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-2">
+                  Active Vehicles in Mobile Swipe Rotation
+                </h3>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  {activeVehicles.map((v) => {
+                    const isActive = settings.activeVehicleIds.includes(v.id);
+                    return (
+                      <div
+                        key={v.id}
+                        onClick={() => toggleVehicleActive(v.id)}
+                        className={`cursor-pointer p-3 rounded-xl border text-left transition-all ${
+                          isActive
+                            ? 'bg-indigo-50/60 dark:bg-indigo-950/40 border-indigo-400 dark:border-indigo-600 shadow-sm'
+                            : 'bg-slate-50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-700 opacity-60'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs font-bold text-slate-900 dark:text-slate-100">
+                            {v.name}
+                          </span>
+                          <span
+                            className="w-3 h-3 rounded-full"
+                            style={{ backgroundColor: v.primaryColor }}
+                          />
+                        </div>
+                        <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                          {v.subtitle}
+                        </div>
+                        <div className="text-[10px] font-mono text-indigo-600 dark:text-indigo-400 mt-2">
+                          {isActive ? '✓ Included in Swipe' : 'Disabled'}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Dynamic Vehicle Ingestion & AI Prompt */}
+              <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+                      <FileCode className="w-4 h-4 text-emerald-600" />
+                      Dynamic JS Vehicle Module Loader
+                    </h4>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      Paste or upload valid Three.js ES Module code to inject custom vehicles.
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleCopyAiPrompt}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-700 hover:bg-slate-100 dark:hover:bg-slate-600 rounded-lg border border-slate-300 dark:border-slate-600 transition-colors"
+                  >
+                    {copiedPrompt ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                    {copiedPrompt ? 'Copied Prompt!' : 'Copy AI Vehicle Prompt'}
+                  </button>
+                </div>
+
+                <textarea
+                  value={customJsCode}
+                  onChange={(e) => setCustomJsCode(e.target.value)}
+                  placeholder="export default { name: 'Fire Engine', baseSpeed: 10, geometry(THREE) { const root = new THREE.Group(); ... return root; } };"
+                  className="w-full h-24 p-2 text-xs font-mono bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+
+                <div className="flex items-center justify-between">
+                  <button
+                    onClick={handleImportModule}
+                    disabled={!customJsCode.trim()}
+                    className="py-1.5 px-4 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-semibold text-xs rounded-lg transition-colors"
+                  >
+                    Inject Vehicle into Game
+                  </button>
+                  {importStatus && (
+                    <span className="text-xs font-medium text-slate-700 dark:text-slate-300">
+                      {importStatus}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'audio' && (
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-4">
+                  <h3 className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                    Volume Levels
+                  </h3>
+                  <div>
+                    <div className="flex justify-between text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                      <span>Phone Synthesizer (Engine & Boing)</span>
+                      <span className="font-mono tabular-nums">{Math.round(settings.phoneVolume * 100)}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="1"
+                      step="0.05"
+                      value={settings.phoneVolume}
+                      onChange={(e) =>
+                        onUpdateSettings({ ...settings, phoneVolume: Number(e.target.value) })
+                      }
+                      className="w-full accent-indigo-600"
+                    />
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                      <span>Desktop Audio Volume</span>
+                      <span className="font-mono tabular-nums">{Math.round(settings.desktopVolume * 100)}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="1"
+                      step="0.05"
+                      value={settings.desktopVolume}
+                      onChange={(e) =>
+                        onUpdateSettings({ ...settings, desktopVolume: Number(e.target.value) })
+                      }
+                      className="w-full accent-indigo-600"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <h3 className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                    Haptic Vibration Feedback
+                  </h3>
+                  <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-800 rounded-lg">
+                    <div className="flex items-center gap-2">
+                      <Vibrate className="w-4 h-4 text-indigo-600" />
+                      <span className="text-xs font-semibold text-slate-900 dark:text-slate-100">
+                        Phone Collision Haptics
+                      </span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={settings.hapticEnabled}
+                      onChange={(e) =>
+                        onUpdateSettings({ ...settings, hapticEnabled: e.target.checked })
+                      }
+                      className="w-4 h-4 accent-indigo-600"
+                    />
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                      <span>Vibration Intensity</span>
+                      <span className="font-mono tabular-nums">{settings.hapticIntensity.toFixed(1)}x</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0.5"
+                      max="1.5"
+                      step="0.1"
+                      value={settings.hapticIntensity}
+                      onChange={(e) =>
+                        onUpdateSettings({ ...settings, hapticIntensity: Number(e.target.value) })
+                      }
+                      className="w-full accent-indigo-600"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'environment' && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-4">
+                <h3 className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                  Camera Perspective
+                </h3>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={() => onUpdateSettings({ ...settings, cameraMode: 'overhead' })}
+                    className={`p-3 rounded-xl border text-left transition-all ${
+                      settings.cameraMode === 'overhead'
+                        ? 'bg-indigo-50/60 dark:bg-indigo-950/40 border-indigo-400 dark:border-indigo-600 text-indigo-900 dark:text-indigo-200'
+                        : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300'
+                    }`}
+                  >
+                    <div className="font-bold text-xs">Overhead (1:1 Table)</div>
+                    <div className="text-[11px] opacity-75 mt-0.5">
+                      Fixed cardinal north, translates with car. Ideal for toddlers.
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => onUpdateSettings({ ...settings, cameraMode: 'chase' })}
+                    className={`p-3 rounded-xl border text-left transition-all ${
+                      settings.cameraMode === 'chase'
+                        ? 'bg-indigo-50/60 dark:bg-indigo-950/40 border-indigo-400 dark:border-indigo-600 text-indigo-900 dark:text-indigo-200'
+                        : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300'
+                    }`}
+                  >
+                    <div className="font-bold text-xs">Chase Camera</div>
+                    <div className="text-[11px] opacity-75 mt-0.5">
+                      Rotates directly behind the vehicle for older kids.
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <h3 className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                  World Density & Theme
+                </h3>
+                <div>
+                  <div className="flex justify-between text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                    <span>Farm Objects & Trees Density</span>
+                    <span className="font-mono tabular-nums">{settings.groundDensity.toFixed(1)}x</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0.5"
+                    max="2.0"
+                    step="0.1"
+                    value={settings.groundDensity}
+                    onChange={(e) =>
+                      onUpdateSettings({ ...settings, groundDensity: Number(e.target.value) })
+                    }
+                    className="w-full accent-indigo-600"
+                  />
+                </div>
+
+                <div className="pt-2">
+                  <label className="text-xs font-medium text-slate-700 dark:text-slate-300 block mb-1">
+                    Sky Theme
+                  </label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {(['day', 'sunset', 'night'] as const).map((t) => (
+                      <button
+                        key={t}
+                        onClick={() => onUpdateSettings({ ...settings, theme: t })}
+                        className={`py-1.5 text-xs font-semibold rounded-lg capitalize border transition-colors ${
+                          settings.theme === t
+                            ? 'bg-indigo-600 text-white border-indigo-600'
+                            : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-transparent hover:bg-slate-200'
+                        }`}
+                      >
+                        {t}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};

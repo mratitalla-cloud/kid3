@@ -1,0 +1,12 @@
+{
+  "name": "Toddler Motion Drive",
+  "description": "Motion-controlled procedural 3D kids driving game pairing smartphone tabletop motion with desktop WebGL over WebRTC.",
+  "requestFramePermissions": [
+    "accelerometer",
+    "gyroscope",
+    "fullscreen"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
