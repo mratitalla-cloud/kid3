@@ -20,10 +20,12 @@ export type CollisionSeverity = 'minor' | 'major' | 'landing' | 'flip';
 export type GameEvent =
   | { type: 'MOTION'; data: MotionPacket }
   | { type: 'SWAP_VEHICLE'; vehicleId: string }
-  | { type: 'COLLISION_TRIGGER'; severity: CollisionSeverity }
+  | { type: 'COLLISION_TRIGGER'; severity: CollisionSeverity; isAirItem?: boolean }
   | { type: 'CALIBRATE_BASELINE'; baselineAlpha: number }
   | { type: 'FORCE_REQUEST_PERMISSIONS' }
   | { type: 'RESET_SPAWN' }
+  | { type: 'WORLD_WARP'; worldId: string }
+  | { type: 'GAME_STATE'; x: number; y: number; z: number; yaw: number; speed: number; worldId: string }
   | { type: 'PING'; timestamp: number }
   | { type: 'PONG'; timestamp: number };
 

@@ -5,6 +5,8 @@
 
 import * as THREE from 'three';
 import { CollisionSeverity } from '../types/game';
+import { WorldDefinition } from '../worlds/types';
+import { sunnyCountrysideWorld, getAllAvailableWorldIds } from '../worlds';
 
 export interface DebrisPiece {
   mesh: THREE.Mesh;
@@ -13,9 +15,24 @@ export interface DebrisPiece {
   life: number;
 }
 
+export type CollidableType =
+  | 'barn'
+  | 'windmill'
+  | 'fence'
+  | 'hay'
+  | 'tree'
+  | 'cow'
+  | 'star_ring'
+  | 'rainbow_cloud'
+  | 'balloon'
+  | 'candy'
+  | 'dino'
+  | 'crystal'
+  | 'portal';
+
 export interface CollidableObject {
   id: string;
-  type: 'barn' | 'windmill' | 'fence' | 'hay' | 'tree' | 'cow' | 'star_ring' | 'rainbow_cloud' | 'balloon';
+  type: CollidableType;
   position: THREE.Vector3;
   radius: number;
   mesh: THREE.Object3D;
@@ -25,15 +42,17 @@ export interface CollidableObject {
   originalScale: THREE.Vector3;
   isDestroyed: boolean;
   respawnTime: number;
+  portalTargetWorldId?: string;
 }
 
 export class WorldGenerator {
   public scene: THREE.Scene;
+  public currentWorld: WorldDefinition;
   private chunkSize = 70;
   private activeChunks = new Map<string, THREE.Group>();
   private collidables: CollidableObject[] = [];
   private activeDebris: DebrisPiece[] = [];
-  private animatedWindmills: THREE.Object3D[] = [];
+  private animatedProps: THREE.Object3D[] = [];
   private animatedAirObjects: { mesh: THREE.Object3D; startY: number; speed: number; offset: number }[] = [];
 
   // Confetti Particle Pool
@@ -45,25 +64,67 @@ export class WorldGenerator {
   } | null = null;
   private maxConfetti = 240;
 
-  // Shared procedural materials
-  private grassMat = new THREE.MeshStandardMaterial({ color: 0x4ade80, roughness: 0.8 });
-  private dirtRoadMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.9 });
-  private barnMat = new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.4 });
-  private roofMat = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.3 });
+  // Cached materials for debris
   private woodMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.7 });
-  private whiteTrimMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.3 });
-  private hayMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.9 });
-  private treeTrunkMat = new THREE.MeshStandardMaterial({ color: 0x854d0e, roughness: 0.8 });
   private foliageMat = new THREE.MeshStandardMaterial({ color: 0x22c55e, roughness: 0.5 });
   private appleMat = new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.3 });
-  private goldStarMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, emissive: 0xf59e0b, emissiveIntensity: 0.7, roughness: 0.2, metalness: 0.8 });
-  private rainbowCloudMat = new THREE.MeshStandardMaterial({ color: 0xf472b6, roughness: 0.3, transparent: true, opacity: 0.9 });
-  private cowWhiteMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.6 });
-  private cowBlackMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.6 });
+  private hayMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.9 });
+  private barnMat = new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.4 });
+  private candyMat = new THREE.MeshStandardMaterial({ color: 0xec4899, roughness: 0.3 });
+  private boneMat = new THREE.MeshStandardMaterial({ color: 0xfef3c7, roughness: 0.5 });
+  private crystalMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, emissive: 0x0284c7, roughness: 0.2 });
 
-  constructor(scene: THREE.Scene) {
+  // Ground and road materials cached per world
+  private groundMaterial: THREE.MeshStandardMaterial;
+  private roadMaterial: THREE.MeshStandardMaterial;
+
+  constructor(scene: THREE.Scene, initialWorld: WorldDefinition = sunnyCountrysideWorld) {
     this.scene = scene;
+    this.currentWorld = initialWorld;
+
+    this.groundMaterial = new THREE.MeshStandardMaterial({
+      color: initialWorld.groundColor,
+      roughness: 0.8,
+    });
+    this.roadMaterial = new THREE.MeshStandardMaterial({
+      color: initialWorld.roadColor,
+      roughness: 0.85,
+    });
+
     this.initConfettiSystem();
+    this.applyWorldAtmosphere(initialWorld);
+  }
+
+  public setWorld(newWorld: WorldDefinition): void {
+    this.currentWorld = newWorld;
+    this.groundMaterial.color.setHex(newWorld.groundColor);
+    this.roadMaterial.color.setHex(newWorld.roadColor);
+    this.applyWorldAtmosphere(newWorld);
+    this.clearAllChunks();
+  }
+
+  private applyWorldAtmosphere(world: WorldDefinition): void {
+    if (this.scene.background instanceof THREE.Color) {
+      this.scene.background.setHex(world.skyColor);
+    } else {
+      this.scene.background = new THREE.Color(world.skyColor);
+    }
+
+    if (this.scene.fog instanceof THREE.FogExp2) {
+      this.scene.fog.color.setHex(world.fogColor);
+    } else {
+      this.scene.fog = new THREE.FogExp2(world.fogColor, 0.012);
+    }
+  }
+
+  public clearAllChunks(): void {
+    for (const [, chunk] of this.activeChunks.entries()) {
+      this.scene.remove(chunk);
+    }
+    this.activeChunks.clear();
+    this.collidables = [];
+    this.animatedProps = [];
+    this.animatedAirObjects = [];
   }
 
   private initConfettiSystem(): void {
@@ -113,9 +174,9 @@ export class WorldGenerator {
     for (let i = 0; i < this.maxConfetti && spawned < count; i++) {
       if (life[i] <= 0) {
         dummy.setPosition(
-          center.x + (Math.random() - 0.5) * 1.2,
-          center.y + 0.8 + Math.random() * 1.2,
-          center.z + (Math.random() - 0.5) * 1.2
+          center.x + (Math.random() - 0.5) * 1.5,
+          center.y + 0.8 + Math.random() * 1.5,
+          center.z + (Math.random() - 0.5) * 1.5
         );
         mesh.setMatrixAt(i, dummy);
 
@@ -138,21 +199,18 @@ export class WorldGenerator {
 
   /**
    * Cartoon Destruction Engine:
-   * Shatters hit objects into tumbling 3D debris pieces with physics!
+   * Shatters hit obstacles into tumbling 3D debris pieces with physics!
    */
   public destroyObject(obj: CollidableObject): void {
     obj.isDestroyed = true;
     obj.respawnTime = performance.now() + 8500; // Respawns after 8.5 seconds
     obj.mesh.visible = false; // Hide main structure
 
-    this.triggerConfetti(obj.position, obj.severity === 'major' ? 50 : 25);
-
+    this.triggerConfetti(obj.position, obj.severity === 'major' ? 50 : 30);
     const pos = obj.position;
 
-    // Spawn specialized debris based on object type
     switch (obj.type) {
       case 'fence': {
-        // Splinter into 4 tumbling wooden planks
         const plankGeo = new THREE.BoxGeometry(0.18, 0.22, 1.8);
         for (let i = 0; i < 4; i++) {
           const plank = new THREE.Mesh(plankGeo, this.woodMat);
@@ -169,7 +227,6 @@ export class WorldGenerator {
       }
 
       case 'tree': {
-        // Foliage pops into 5 green puffs + 4 bouncing apples
         const puffGeo = new THREE.DodecahedronGeometry(0.9, 1);
         for (let i = 0; i < 5; i++) {
           const puff = new THREE.Mesh(puffGeo, this.foliageMat);
@@ -182,7 +239,6 @@ export class WorldGenerator {
             life: 3.0,
           });
         }
-        // Rolling red apples
         const appleGeo = new THREE.SphereGeometry(0.22, 8, 8);
         for (let i = 0; i < 4; i++) {
           const apple = new THREE.Mesh(appleGeo, this.appleMat);
@@ -199,7 +255,6 @@ export class WorldGenerator {
       }
 
       case 'hay': {
-        // Golden straw cubes burst outward
         const strawGeo = new THREE.BoxGeometry(0.45, 0.45, 0.45);
         for (let i = 0; i < 6; i++) {
           const straw = new THREE.Mesh(strawGeo, this.hayMat);
@@ -216,10 +271,9 @@ export class WorldGenerator {
       }
 
       case 'barn': {
-        // Barn blows roof and red wall panels
-        const wallChunkGeo = new THREE.BoxGeometry(1.6, 1.2, 0.3);
+        const wallGeo = new THREE.BoxGeometry(1.6, 1.2, 0.3);
         for (let i = 0; i < 6; i++) {
-          const chunk = new THREE.Mesh(wallChunkGeo, this.barnMat);
+          const chunk = new THREE.Mesh(wallGeo, this.barnMat);
           chunk.position.set(pos.x + (Math.random() - 0.5) * 3, pos.y + 2.0, pos.z + (Math.random() - 0.5) * 3);
           this.scene.add(chunk);
           this.activeDebris.push({
@@ -232,9 +286,62 @@ export class WorldGenerator {
         break;
       }
 
+      case 'candy': {
+        const candyGeo = new THREE.DodecahedronGeometry(0.6);
+        for (let i = 0; i < 7; i++) {
+          const candy = new THREE.Mesh(candyGeo, this.candyMat);
+          candy.position.set(pos.x + (Math.random() - 0.5) * 2, pos.y + 1.8, pos.z + (Math.random() - 0.5) * 2);
+          this.scene.add(candy);
+          this.activeDebris.push({
+            mesh: candy,
+            velocity: new THREE.Vector3((Math.random() - 0.5) * 10, 6 + Math.random() * 6, (Math.random() - 0.5) * 10),
+            angularVelocity: new THREE.Vector3(Math.random() * 9, Math.random() * 9, Math.random() * 9),
+            life: 2.6,
+          });
+        }
+        break;
+      }
+
+      case 'dino': {
+        const boneGeo = new THREE.CylinderGeometry(0.2, 0.2, 1.2, 6);
+        for (let i = 0; i < 5; i++) {
+          const bone = new THREE.Mesh(boneGeo, this.boneMat);
+          bone.position.set(pos.x + (Math.random() - 0.5) * 2, pos.y + 1.5, pos.z + (Math.random() - 0.5) * 2);
+          this.scene.add(bone);
+          this.activeDebris.push({
+            mesh: bone,
+            velocity: new THREE.Vector3((Math.random() - 0.5) * 9, 5 + Math.random() * 7, (Math.random() - 0.5) * 9),
+            angularVelocity: new THREE.Vector3(Math.random() * 7, Math.random() * 7, Math.random() * 7),
+            life: 2.8,
+          });
+        }
+        break;
+      }
+
+      case 'crystal': {
+        const shardGeo = new THREE.ConeGeometry(0.4, 1.4, 5);
+        for (let i = 0; i < 6; i++) {
+          const shard = new THREE.Mesh(shardGeo, this.crystalMat);
+          shard.position.set(pos.x + (Math.random() - 0.5) * 2, pos.y + 2.0, pos.z + (Math.random() - 0.5) * 2);
+          this.scene.add(shard);
+          this.activeDebris.push({
+            mesh: shard,
+            velocity: new THREE.Vector3((Math.random() - 0.5) * 10, 6 + Math.random() * 6, (Math.random() - 0.5) * 10),
+            angularVelocity: new THREE.Vector3(Math.random() * 8, Math.random() * 8, Math.random() * 8),
+            life: 3.0,
+          });
+        }
+        break;
+      }
+
+      case 'portal': {
+        // Portal vortex flashes and creates immense confetti ring
+        this.triggerConfetti(pos, 60);
+        break;
+      }
+
       case 'cow': {
-        // Cow flips high into the air with comical spin
-        obj.mesh.visible = true; // Keep visible for backflip
+        obj.mesh.visible = true; // Comical backflip
         obj.mesh.position.y += 2.0;
         break;
       }
@@ -242,7 +349,6 @@ export class WorldGenerator {
       case 'star_ring':
       case 'rainbow_cloud':
       case 'balloon': {
-        // Air collectibles burst with huge rings of confetti
         this.triggerConfetti(pos, 45);
         break;
       }
@@ -285,18 +391,18 @@ export class WorldGenerator {
     const originZ = cz * this.chunkSize;
     chunk.position.set(originX, 0, originZ);
 
-    // Ground Plane
-    const groundGeo = new THREE.PlaneGeometry(this.chunkSize, this.chunkSize, 8, 8);
+    // Ground Plane with current world theme
+    const groundGeo = new THREE.PlaneGeometry(this.chunkSize, this.chunkSize, 6, 6);
     groundGeo.rotateX(-Math.PI / 2);
-    const ground = new THREE.Mesh(groundGeo, this.grassMat);
+    const ground = new THREE.Mesh(groundGeo, this.groundMaterial);
     ground.position.set(this.chunkSize / 2, -0.05, this.chunkSize / 2);
     ground.receiveShadow = true;
     chunk.add(ground);
 
-    // Dirt country path
+    // Country / Theme Dirt Road
     const pathGeo = new THREE.PlaneGeometry(7.0, this.chunkSize + 1);
     pathGeo.rotateX(-Math.PI / 2);
-    const path = new THREE.Mesh(pathGeo, this.dirtRoadMat);
+    const path = new THREE.Mesh(pathGeo, this.roadMaterial);
     path.position.set(this.chunkSize / 2, 0.02, this.chunkSize / 2);
     path.receiveShadow = true;
     chunk.add(path);
@@ -307,216 +413,71 @@ export class WorldGenerator {
       return x - Math.floor(x);
     };
 
-    // 1. Red Barn
-    if (rand(1) > 0.45) {
-      const barnX = rand(2) > 0.5 ? 14 : this.chunkSize - 14;
-      const barnZ = 15 + rand(3) * (this.chunkSize - 30);
-      const barn = this.createBarn();
-      barn.position.set(barnX, 0, barnZ);
-      chunk.add(barn);
-
-      this.registerCollidable(
-        `barn_${cx}_${cz}`,
-        'barn',
-        new THREE.Vector3(originX + barnX, 0, originZ + barnZ),
-        5.5,
-        barn,
-        'major',
-        false
-      );
-    }
-
-    // 2. Windmill
-    if (rand(4) > 0.6) {
-      const millX = rand(5) > 0.5 ? 16 : this.chunkSize - 16;
-      const millZ = 12 + rand(6) * (this.chunkSize - 24);
-      const { group: windmill, blades } = this.createWindmill();
-      windmill.position.set(millX, 0, millZ);
-      chunk.add(windmill);
-      this.animatedWindmills.push(blades);
-
-      this.registerCollidable(
-        `windmill_${cx}_${cz}`,
-        'windmill',
-        new THREE.Vector3(originX + millX, 0, originZ + millZ),
-        3.5,
-        windmill,
-        'major',
-        false
-      );
-    }
-
-    // 3. Fences along path
-    const fenceStep = 9;
-    for (let fz = 4; fz < this.chunkSize - 4; fz += fenceStep) {
-      const fenceL = this.createFence();
-      fenceL.position.set(this.chunkSize / 2 - 5.5, 0, fz);
-      chunk.add(fenceL);
-      this.registerCollidable(
-        `fenceL_${cx}_${cz}_${fz}`,
-        'fence',
-        new THREE.Vector3(originX + this.chunkSize / 2 - 5.5, 0, originZ + fz),
-        2.0,
-        fenceL,
-        'minor',
-        false
-      );
-
-      const fenceR = this.createFence();
-      fenceR.position.set(this.chunkSize / 2 + 5.5, 0, fz);
-      chunk.add(fenceR);
-      this.registerCollidable(
-        `fenceR_${cx}_${cz}_${fz}`,
-        'fence',
-        new THREE.Vector3(originX + this.chunkSize / 2 + 5.5, 0, originZ + fz),
-        2.0,
-        fenceR,
-        'minor',
-        false
-      );
-    }
-
-    // 4. Hay Bales
-    const numHay = Math.floor(4 * density);
-    for (let i = 0; i < numHay; i++) {
-      const hx = 6 + rand(10 + i) * (this.chunkSize - 12);
-      if (Math.abs(hx - this.chunkSize / 2) > 6) {
-        const hz = 6 + rand(20 + i) * (this.chunkSize - 12);
-        const hay = this.createHayBale();
-        hay.position.set(hx, 0, hz);
-        chunk.add(hay);
-
-        this.registerCollidable(
-          `hay_${cx}_${cz}_${i}`,
-          'hay',
-          new THREE.Vector3(originX + hx, 0, originZ + hz),
-          2.0,
-          hay,
-          'minor',
-          false
-        );
+    const registerCollidable = (
+      id: string,
+      type: CollidableType,
+      pos: THREE.Vector3,
+      radius: number,
+      mesh: THREE.Object3D,
+      severity: CollisionSeverity,
+      isAirObject: boolean,
+      portalTargetWorldId?: string
+    ) => {
+      if (this.collidables.length > 350) {
+        this.collidables.shift();
       }
-    }
+      this.collidables.push({
+        id,
+        type,
+        position: pos,
+        radius,
+        mesh,
+        severity,
+        isAirObject,
+        hitTimestamp: 0,
+        originalScale: mesh.scale.clone(),
+        isDestroyed: false,
+        respawnTime: 0,
+        portalTargetWorldId,
+      });
 
-    // 5. Apple Trees
-    const numTrees = Math.floor(7 * density);
-    for (let i = 0; i < numTrees; i++) {
-      const tx = 5 + rand(30 + i) * (this.chunkSize - 10);
-      if (Math.abs(tx - this.chunkSize / 2) > 7) {
-        const tz = 5 + rand(40 + i) * (this.chunkSize - 10);
-        const tree = this.createAppleTree();
-        tree.position.set(tx, 0, tz);
-        chunk.add(tree);
-
-        this.registerCollidable(
-          `tree_${cx}_${cz}_${i}`,
-          'tree',
-          new THREE.Vector3(originX + tx, 0, originZ + tz),
-          2.4,
-          tree,
-          'minor',
-          false
-        );
+      if (isAirObject) {
+        this.animatedAirObjects.push({
+          mesh,
+          startY: pos.y,
+          speed: 0.6 + rand(1) * 0.4,
+          offset: rand(2) * Math.PI,
+        });
       }
-    }
+    };
 
-    // 6. Grazing Cow
-    if (rand(50) > 0.4) {
-      const cowX = rand(51) > 0.5 ? 20 : this.chunkSize - 20;
-      const cowZ = 10 + rand(52) * (this.chunkSize - 20);
-      const cow = this.createCow();
-      cow.position.set(cowX, 0, cowZ);
-      chunk.add(cow);
-      this.registerCollidable(
-        `cow_${cx}_${cz}`,
-        'cow',
-        new THREE.Vector3(originX + cowX, 0, originZ + cowZ),
-        2.2,
-        cow,
-        'minor',
-        false
-      );
-    }
-
-    // 7. AIR OBJECTS: Golden Star Rings to fly through!
-    for (let r = 0; r < 2; r++) {
-      const ringX = 8 + rand(60 + r) * (this.chunkSize - 16);
-      const ringZ = 8 + rand(70 + r) * (this.chunkSize - 16);
-      const ringY = 12 + rand(80 + r) * 14; // Hovering between 12m and 26m
-      const ring = this.createStarRing();
-      ring.position.set(ringX, ringY, ringZ);
-      chunk.add(ring);
-
-      this.registerCollidable(
-        `star_ring_${cx}_${cz}_${r}`,
-        'star_ring',
-        new THREE.Vector3(originX + ringX, ringY, originZ + ringZ),
-        3.2,
-        ring,
-        'minor',
-        true
-      );
-      this.animatedAirObjects.push({ mesh: ring, startY: ringY, speed: 0.6, offset: rand(85 + r) });
-    }
-
-    // 8. AIR OBJECTS: Rainbow Clouds & Floating Balloons
-    if (rand(90) > 0.3) {
-      const cloudX = rand(91) * this.chunkSize;
-      const cloudZ = rand(92) * this.chunkSize;
-      const cloudY = 16 + rand(93) * 12;
-      const rainbowCloud = this.createRainbowCloud();
-      rainbowCloud.position.set(cloudX, cloudY, cloudZ);
-      chunk.add(rainbowCloud);
-
-      this.registerCollidable(
-        `rainbow_cloud_${cx}_${cz}`,
-        'rainbow_cloud',
-        new THREE.Vector3(originX + cloudX, cloudY, originZ + cloudZ),
-        3.5,
-        rainbowCloud,
-        'minor',
-        true
-      );
-    }
+    // Spawn chunk objects using current world's procedural generator!
+    const availableWorlds = getAllAvailableWorldIds();
+    this.currentWorld.spawnChunkObjects(
+      chunk,
+      cx,
+      cz,
+      originX,
+      originZ,
+      this.chunkSize,
+      density,
+      rand,
+      registerCollidable,
+      availableWorlds
+    );
 
     return chunk;
   }
 
-  private registerCollidable(
-    id: string,
-    type: CollidableObject['type'],
-    pos: THREE.Vector3,
-    radius: number,
-    mesh: THREE.Object3D,
-    severity: CollisionSeverity,
-    isAirObject: boolean
-  ): void {
-    if (this.collidables.length > 300) {
-      this.collidables.shift();
-    }
-    this.collidables.push({
-      id,
-      type,
-      position: pos,
-      radius,
-      mesh,
-      severity,
-      isAirObject,
-      hitTimestamp: 0,
-      originalScale: mesh.scale.clone(),
-      isDestroyed: false,
-      respawnTime: 0,
-    });
-  }
-
   /**
-   * Check vehicle collisions in full 3D (X, Y, Z)
+   * Check vehicle collisions in full 3D (X, Y, Z), including portal warp detection!
    */
   public checkCollisions(
     carPos: THREE.Vector3,
-    carRadius = 2.2,
+    carRadius = 2.4,
     isAirVehicle = false,
-    onCollision: (severity: CollisionSeverity, isAirItem?: boolean) => void
+    onCollision: (severity: CollisionSeverity, isAirItem?: boolean) => void,
+    onPortalWarp?: (targetWorldId: string) => void
   ): void {
     const now = performance.now();
 
@@ -524,10 +485,26 @@ export class WorldGenerator {
       const obj = this.collidables[i];
       if (obj.isDestroyed || now - obj.hitTimestamp < 1500) continue;
 
-      // Height check: if grounded car, ignore high air rings; if flying plane, check 3D distance
+      // Check portal warp
+      if (obj.type === 'portal') {
+        const dx = carPos.x - obj.position.x;
+        const dz = carPos.z - obj.position.z;
+        const horizDist = Math.sqrt(dx * dx + dz * dz);
+        if (horizDist < carRadius + obj.radius) {
+          obj.hitTimestamp = now;
+          this.destroyObject(obj);
+          if (obj.portalTargetWorldId && onPortalWarp) {
+            onPortalWarp(obj.portalTargetWorldId);
+          }
+          return;
+        }
+        continue;
+      }
+
+      // Height check: grounded cars ignore high air rings; flying planes check 3D distance
       const dy = carPos.y - obj.position.y;
       if (!isAirVehicle && obj.isAirObject) continue;
-      if (Math.abs(dy) > (carRadius + obj.radius + 1.5)) continue;
+      if (Math.abs(dy) > carRadius + obj.radius + 1.5) continue;
 
       const distSq =
         Math.pow(carPos.x - obj.position.x, 2) +
@@ -552,13 +529,13 @@ export class WorldGenerator {
       if (obj.isDestroyed && now > obj.respawnTime) {
         obj.isDestroyed = false;
         obj.mesh.visible = true;
-        obj.mesh.scale.set(0.01, 0.01, 0.01); // Pop back up
+        obj.mesh.scale.set(0.01, 0.01, 0.01);
       } else if (!obj.isDestroyed && obj.mesh.scale.x < obj.originalScale.x * 0.98) {
         obj.mesh.scale.lerp(obj.originalScale, delta * 6.0);
       }
     }
 
-    // 2. Animate tumbling debris pieces with gravity & rotation
+    // 2. Animate tumbling debris pieces with gravity & bounce
     for (let i = this.activeDebris.length - 1; i >= 0; i--) {
       const d = this.activeDebris[i];
       d.life -= delta;
@@ -566,7 +543,6 @@ export class WorldGenerator {
       d.mesh.position.addScaledVector(d.velocity, delta);
       d.velocity.y -= 14.0 * delta; // Gravity
 
-      // Bounce on ground
       if (d.mesh.position.y < 0.2) {
         d.mesh.position.y = 0.2;
         d.velocity.y = -d.velocity.y * 0.4;
@@ -585,12 +561,12 @@ export class WorldGenerator {
       }
     }
 
-    // 3. Spin windmills
-    for (let i = 0; i < this.animatedWindmills.length; i++) {
-      this.animatedWindmills[i].rotation.z += delta * 1.5;
+    // 3. Animated windmills & props
+    for (let i = 0; i < this.animatedProps.length; i++) {
+      this.animatedProps[i].rotation.z += delta * 1.5;
     }
 
-    // 4. Bob and spin air objects (star rings and rainbow clouds)
+    // 4. Bob and spin air objects
     for (let i = 0; i < this.animatedAirObjects.length; i++) {
       const o = this.animatedAirObjects[i];
       o.mesh.position.y = o.startY + Math.sin(elapsed * o.speed + o.offset) * 1.8;
@@ -634,168 +610,5 @@ export class WorldGenerator {
         mesh.instanceMatrix.needsUpdate = true;
       }
     }
-  }
-
-  // --- Procedural Mesh Builders ---
-
-  private createStarRing(): THREE.Group {
-    const group = new THREE.Group();
-    // Glowing golden torus
-    const ringGeo = new THREE.TorusGeometry(2.4, 0.35, 12, 24);
-    const ring = new THREE.Mesh(ringGeo, this.goldStarMat);
-    group.add(ring);
-
-    // Star in center
-    const starGeo = new THREE.OctahedronGeometry(0.8);
-    const star = new THREE.Mesh(starGeo, this.goldStarMat);
-    group.add(star);
-    return group;
-  }
-
-  private createRainbowCloud(): THREE.Group {
-    const group = new THREE.Group();
-    const puffGeo = new THREE.SphereGeometry(2.0, 8, 8);
-    const p1 = new THREE.Mesh(puffGeo, this.rainbowCloudMat);
-    const p2 = new THREE.Mesh(puffGeo, this.rainbowCloudMat);
-    p2.position.set(1.8, 0, 0);
-    p2.scale.set(0.85, 0.85, 0.85);
-    const p3 = new THREE.Mesh(puffGeo, this.rainbowCloudMat);
-    p3.position.set(-1.8, 0, 0);
-    p3.scale.set(0.8, 0.8, 0.8);
-    group.add(p1, p2, p3);
-    return group;
-  }
-
-  private createBarn(): THREE.Group {
-    const group = new THREE.Group();
-    const barn = new THREE.Mesh(new THREE.BoxGeometry(7, 4.5, 6), this.barnMat);
-    barn.position.set(0, 2.25, 0);
-    barn.castShadow = true;
-    barn.receiveShadow = true;
-    group.add(barn);
-
-    const roof = new THREE.Mesh(new THREE.ConeGeometry(5.2, 3.2, 4), this.roofMat);
-    roof.rotation.y = Math.PI / 4;
-    roof.scale.set(1.1, 1, 0.9);
-    roof.position.set(0, 5.8, 0);
-    roof.castShadow = true;
-    group.add(roof);
-
-    const door = new THREE.Mesh(new THREE.BoxGeometry(2.4, 3.2, 0.2), this.whiteTrimMat);
-    door.position.set(0, 1.6, 3.05);
-    group.add(door);
-    return group;
-  }
-
-  private createWindmill(): { group: THREE.Group; blades: THREE.Object3D } {
-    const group = new THREE.Group();
-    const tower = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 2.6, 8, 8), this.whiteTrimMat);
-    tower.position.set(0, 4, 0);
-    tower.castShadow = true;
-    group.add(tower);
-
-    const cap = new THREE.Mesh(new THREE.ConeGeometry(1.9, 2.0, 8), this.roofMat);
-    cap.position.set(0, 9.0, 0);
-    group.add(cap);
-
-    const bladesGroup = new THREE.Group();
-    bladesGroup.position.set(0, 8.2, 1.6);
-    const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.4, 12), this.woodMat);
-    hub.rotation.x = Math.PI / 2;
-    bladesGroup.add(hub);
-
-    const bladeGeo = new THREE.BoxGeometry(0.6, 3.6, 0.08);
-    for (let i = 0; i < 4; i++) {
-      const blade = new THREE.Mesh(bladeGeo, this.woodMat);
-      blade.position.y = 1.8;
-      const bladePivot = new THREE.Group();
-      bladePivot.rotation.z = (i * Math.PI) / 2;
-      bladePivot.add(blade);
-      bladesGroup.add(bladePivot);
-    }
-    group.add(bladesGroup);
-    return { group, blades: bladesGroup };
-  }
-
-  private createFence(): THREE.Group {
-    const group = new THREE.Group();
-    const postGeo = new THREE.CylinderGeometry(0.12, 0.12, 1.3, 8);
-    const post1 = new THREE.Mesh(postGeo, this.woodMat);
-    post1.position.set(0, 0.65, -3.5);
-    post1.castShadow = true;
-    const post2 = new THREE.Mesh(postGeo, this.woodMat);
-    post2.position.set(0, 0.65, 3.5);
-    post2.castShadow = true;
-    group.add(post1, post2);
-
-    const railGeo = new THREE.BoxGeometry(0.1, 0.18, 7.2);
-    const rail1 = new THREE.Mesh(railGeo, this.woodMat);
-    rail1.position.set(0, 0.5, 0);
-    const rail2 = new THREE.Mesh(railGeo, this.woodMat);
-    rail2.position.set(0, 0.95, 0);
-    group.add(rail1, rail2);
-    return group;
-  }
-
-  private createHayBale(): THREE.Group {
-    const group = new THREE.Group();
-    const bale = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.9, 1.6, 12), this.hayMat);
-    bale.rotation.z = Math.PI / 2;
-    bale.position.set(0, 0.9, 0);
-    bale.castShadow = true;
-    group.add(bale);
-    return group;
-  }
-
-  private createAppleTree(): THREE.Group {
-    const group = new THREE.Group();
-    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.5, 2.5, 8), this.treeTrunkMat);
-    trunk.position.set(0, 1.25, 0);
-    trunk.castShadow = true;
-    group.add(trunk);
-
-    const crown = new THREE.Mesh(new THREE.DodecahedronGeometry(1.6, 1), this.foliageMat);
-    crown.position.set(0, 3.2, 0);
-    crown.castShadow = true;
-    group.add(crown);
-
-    const appleGeo = new THREE.SphereGeometry(0.18, 8, 8);
-    [[-0.8, 3.2, 0.9], [0.9, 3.0, 0.7], [-0.4, 2.7, -1.0], [0.7, 3.4, -0.6]].forEach(([x, y, z]) => {
-      const apple = new THREE.Mesh(appleGeo, this.appleMat);
-      apple.position.set(x, y, z);
-      group.add(apple);
-    });
-    return group;
-  }
-
-  private createCow(): THREE.Group {
-    const group = new THREE.Group();
-    const body = new THREE.Mesh(new THREE.BoxGeometry(1.4, 1.1, 2.0), this.cowWhiteMat);
-    body.position.set(0, 1.3, 0);
-    body.castShadow = true;
-    group.add(body);
-
-    const spot = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.6, 0.8), this.cowBlackMat);
-    spot.position.set(0.45, 1.35, 0.2);
-    group.add(spot);
-
-    const head = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 0.9), this.cowWhiteMat);
-    head.position.set(0, 1.9, -1.1);
-    group.add(head);
-
-    const muzzle = new THREE.Mesh(
-      new THREE.BoxGeometry(0.6, 0.4, 0.4),
-      new THREE.MeshStandardMaterial({ color: 0xf472b6, roughness: 0.5 })
-    );
-    muzzle.position.set(0, 1.7, -1.5);
-    group.add(muzzle);
-
-    const legGeo = new THREE.CylinderGeometry(0.12, 0.12, 0.8, 8);
-    [[-0.5, -0.7], [0.5, -0.7], [-0.5, 0.7], [0.5, 0.7]].forEach(([x, z]) => {
-      const leg = new THREE.Mesh(legGeo, this.cowWhiteMat);
-      leg.position.set(x, 0.4, z);
-      group.add(leg);
-    });
-    return group;
   }
 }

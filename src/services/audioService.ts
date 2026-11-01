@@ -31,6 +31,26 @@ export class AudioService {
     }
   }
 
+  public unlockSynchronously(): void {
+    if (!this.ctx) {
+      this.init();
+    }
+    if (this.ctx) {
+      if (this.ctx.state === 'suspended') {
+        this.ctx.resume().catch(() => {});
+      }
+      try {
+        const buffer = this.ctx.createBuffer(1, 1, 22050);
+        const source = this.ctx.createBufferSource();
+        source.buffer = buffer;
+        source.connect(this.ctx.destination);
+        source.start(0);
+      } catch {
+        // ignore
+      }
+    }
+  }
+
   public async resume(): Promise<void> {
     if (!this.ctx) this.init();
     if (this.ctx) {
@@ -287,6 +307,72 @@ export class AudioService {
         osc.start(noteTime);
         osc.stop(noteTime + 0.2);
       });
+    } catch {
+      // Ignore
+    }
+  }
+
+  /**
+   * Sci-fi cosmic warp whoosh when entering a world portal
+   */
+  public playPortalWarp(): void {
+    if (!this.ctx || !this.masterGain) return;
+    try {
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(220, now);
+      osc.frequency.exponentialRampToValueAtTime(1400, now + 0.6);
+
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.frequency.setValueAtTime(400, now);
+      filter.frequency.exponentialRampToValueAtTime(3200, now + 0.6);
+      filter.Q.value = 3.0;
+
+      gain.gain.setValueAtTime(0.01, now);
+      gain.gain.linearRampToValueAtTime(0.35, now + 0.25);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.75);
+
+      osc.connect(filter);
+      filter.connect(gain);
+      gain.connect(this.masterGain);
+
+      osc.start(now);
+      osc.stop(now + 0.8);
+    } catch {
+      // Ignore
+    }
+  }
+
+  /**
+   * Cheerful chime to test audio and vibration on phone
+   */
+  public playTestChime(): void {
+    if (!this.ctx || !this.masterGain) return;
+    try {
+      const now = this.ctx.currentTime;
+      [440, 554.37, 659.25, 880].forEach((freq, idx) => {
+        if (!this.ctx || !this.masterGain) return;
+        const noteTime = now + idx * 0.08;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, noteTime);
+
+        gain.gain.setValueAtTime(0.3, noteTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, noteTime + 0.35);
+
+        osc.connect(gain);
+        gain.connect(this.masterGain);
+
+        osc.start(noteTime);
+        osc.stop(noteTime + 0.38);
+      });
+      this.playHapticThud(1.2);
     } catch {
       // Ignore
     }

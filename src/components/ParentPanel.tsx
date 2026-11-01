@@ -19,9 +19,11 @@ import {
   Copy,
   Check,
   FileCode,
+  Globe,
 } from 'lucide-react';
 import { ParentSettings, MotionPacket } from '../types/game';
 import { BUILTIN_VEHICLES, getAiVehiclePrompt, loadVehicleFromModule, VehicleItem } from '../vehicles/roster';
+import { BUILTIN_WORLDS, getAiWorldPrompt, WorldDefinition } from '../worlds';
 
 interface ParentPanelProps {
   isOpen: boolean;
@@ -34,6 +36,8 @@ interface ParentPanelProps {
   onAddCustomVehicle: (vehicle: VehicleItem) => void;
   activeVehicles: VehicleItem[];
   onForceRequestPermissions: () => void;
+  currentWorldId: string;
+  onSelectWorld: (worldId: string) => void;
 }
 
 export const ParentPanel: React.FC<ParentPanelProps> = ({
@@ -47,11 +51,15 @@ export const ParentPanel: React.FC<ParentPanelProps> = ({
   onAddCustomVehicle,
   activeVehicles,
   onForceRequestPermissions,
+  currentWorldId,
+  onSelectWorld,
 }) => {
-  const [activeTab, setActiveTab] = useState<'calibration' | 'vehicles' | 'audio' | 'environment'>('calibration');
+  const [activeTab, setActiveTab] = useState<'calibration' | 'worlds' | 'vehicles' | 'audio' | 'environment'>('calibration');
   const [customJsCode, setCustomJsCode] = useState('');
   const [importStatus, setImportStatus] = useState<string | null>(null);
   const [copiedPrompt, setCopiedPrompt] = useState(false);
+  const [worldThemeIdea, setWorldThemeIdea] = useState('Underwater Coral Kingdom or Pirate Cove');
+  const [copiedWorldPrompt, setCopiedWorldPrompt] = useState(false);
 
   if (!isOpen) return null;
 
@@ -64,6 +72,13 @@ export const ParentPanel: React.FC<ParentPanelProps> = ({
     navigator.clipboard.writeText(prompt);
     setCopiedPrompt(true);
     setTimeout(() => setCopiedPrompt(false), 2000);
+  };
+
+  const handleCopyWorldAiPrompt = () => {
+    const prompt = getAiWorldPrompt(worldThemeIdea);
+    navigator.clipboard.writeText(prompt);
+    setCopiedWorldPrompt(true);
+    setTimeout(() => setCopiedWorldPrompt(false), 2000);
   };
 
   const handleImportModule = async () => {
@@ -143,6 +158,17 @@ export const ParentPanel: React.FC<ParentPanelProps> = ({
           >
             <Compass className="w-4 h-4" />
             Motion & Calibration
+          </button>
+          <button
+            onClick={() => setActiveTab('worlds')}
+            className={`flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-t-lg transition-colors ${
+              activeTab === 'worlds'
+                ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 border-t-2 border-indigo-600 shadow-sm'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+            }`}
+          >
+            <Globe className="w-4 h-4" />
+            Worlds & Portals
           </button>
           <button
             onClick={() => setActiveTab('vehicles')}
@@ -329,6 +355,136 @@ export const ParentPanel: React.FC<ParentPanelProps> = ({
                     <div>Tilt Y: {latestMotion ? latestMotion.beta.toFixed(1) : 0}°</div>
                     <div>Push Y: {latestMotion ? latestMotion.accelY.toFixed(1) : 0}</div>
                   </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'worlds' && (
+            <div className="space-y-6">
+              {/* World Selector */}
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <h3 className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                      Interactive Worlds Roster
+                    </h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                      All worlds live in <code className="text-indigo-600 dark:text-indigo-400 font-mono">/src/worlds/</code>. Click any world to teleport immediately, or drive into random portals!
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {BUILTIN_WORLDS.map((w) => {
+                    const isActive = w.id === currentWorldId;
+                    return (
+                      <div
+                        key={w.id}
+                        onClick={() => onSelectWorld(w.id)}
+                        className={`cursor-pointer p-3.5 rounded-xl border text-left transition-all ${
+                          isActive
+                            ? 'bg-indigo-50/80 dark:bg-indigo-950/60 border-indigo-500 dark:border-indigo-500 shadow-md ring-2 ring-indigo-400/40'
+                            : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-sm text-slate-900 dark:text-slate-100">
+                            {w.name}
+                          </span>
+                          {isActive ? (
+                            <span className="px-2 py-0.5 text-[10px] font-bold bg-indigo-600 text-white rounded-full">
+                              ACTIVE WORLD
+                            </span>
+                          ) : (
+                            <span className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline">
+                              Teleport →
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-slate-600 dark:text-slate-300 mt-1">
+                          {w.subtitle}
+                        </p>
+                        <div className="flex items-center gap-2 mt-2 pt-2 border-t border-slate-200/60 dark:border-slate-700/60 text-[11px] font-mono">
+                          <span className="flex items-center gap-1">
+                            <span
+                              className="w-2.5 h-2.5 rounded-full inline-block border border-black/20"
+                              style={{ backgroundColor: `#${w.groundColor.toString(16).padStart(6, '0')}` }}
+                            />
+                            Ground
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <span
+                              className="w-2.5 h-2.5 rounded-full inline-block border border-black/20"
+                              style={{ backgroundColor: `#${w.roadColor.toString(16).padStart(6, '0')}` }}
+                            />
+                            Road
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <span
+                              className="w-2.5 h-2.5 rounded-full inline-block border border-black/20"
+                              style={{ backgroundColor: `#${w.skyColor.toString(16).padStart(6, '0')}` }}
+                            />
+                            Sky
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Portal System Explainer */}
+              <div className="p-3.5 bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800 rounded-xl">
+                <div className="flex items-center gap-2 text-purple-900 dark:text-purple-200 font-bold text-xs">
+                  <Sparkles className="w-4 h-4 text-purple-600" />
+                  <span>Procedural Stargate Portals Spawned In-Game</span>
+                </div>
+                <p className="text-xs text-purple-800 dark:text-purple-300 mt-1">
+                  Each world randomly spawns glowing vortex stargates (~25% chunk chance) alongside the road. Driving the vehicle directly into any vortex triggers a cosmic whoosh and instantly teleports the toddler to another world!
+                </p>
+              </div>
+
+              {/* AI World Prompt Generator */}
+              <div className="p-4 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                    <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                      Generate New World with AI
+                    </h4>
+                  </div>
+                  <button
+                    onClick={handleCopyWorldAiPrompt}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow-sm transition-colors"
+                  >
+                    {copiedWorldPrompt ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-emerald-300" />
+                        <span>Prompt Copied!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>Copy AI World Prompt</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+                <p className="text-xs text-slate-600 dark:text-slate-400">
+                  Parents can customize the world theme concept below and copy the prompt to paste into Gemini / Claude to generate a brand new world file in <code className="font-mono text-indigo-600 dark:text-indigo-400">/src/worlds/</code>.
+                </p>
+                <div>
+                  <label className="text-xs font-medium text-slate-700 dark:text-slate-300 block mb-1">
+                    Theme / Atmosphere Concept:
+                  </label>
+                  <input
+                    type="text"
+                    value={worldThemeIdea}
+                    onChange={(e) => setWorldThemeIdea(e.target.value)}
+                    placeholder="e.g. Underwater Coral Kingdom or Pirate Cove"
+                    className="w-full px-3 py-1.5 text-xs bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
                 </div>
               </div>
             </div>

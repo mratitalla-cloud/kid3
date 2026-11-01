@@ -10,6 +10,8 @@ import { GameEvent, MotionPacket } from '../types/game';
 import { BUILTIN_VEHICLES, VehicleItem } from '../vehicles/roster';
 import { mobileAudio } from '../services/audioService';
 import { HapticsService } from '../services/hapticsService';
+import { WorldGenerator } from '../engine/worldGenerator';
+import { getWorldById } from '../worlds';
 import {
   Volume2,
   VolumeX,
@@ -20,6 +22,8 @@ import {
   AlertCircle,
   ArrowUpCircle,
   CheckCircle,
+  Vibrate,
+  Globe,
 } from 'lucide-react';
 
 interface MobileControllerProps {
@@ -35,6 +39,11 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
   const [hasMotionSensor, setHasMotionSensor] = useState(false);
   const [showForcePermissionModal, setShowForcePermissionModal] = useState(false);
   const [currentAngleDisplay, setCurrentAngleDisplay] = useState(0);
+
+  // Active World and Warp state on Phone
+  const [activeWorldName, setActiveWorldName] = useState('Sunny Countryside');
+  const [isWarpingMobile, setIsWarpingMobile] = useState(false);
+  const [testChimeActive, setTestChimeActive] = useState(false);
 
   const canvasMountRef = useRef<HTMLDivElement>(null);
   const peerServiceRef = useRef<PeerService | null>(null);
@@ -55,11 +64,15 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
   const streamIntervalRef = useRef<number | null>(null);
   const lastAccelZRef = useRef(0);
 
+  // Server state tracking for vehicle & camera synchronization
+  const serverVehiclePosRef = useRef({ x: 0, y: 0, z: 0, yaw: 0, speed: 0 });
+
   // 3D Top-Down Viewport Refs
   const vehicle3DGroupRef = useRef<THREE.Group>(new THREE.Group());
   const sceneRef = useRef<THREE.Scene | null>(null);
-  const cameraRef = useRef<THREE.OrthographicCamera | THREE.PerspectiveCamera | null>(null);
+  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
+  const worldGenRef = useRef<WorldGenerator | null>(null);
   const currentVehicleRef = useRef<VehicleItem>(vehicles[0]);
   currentVehicleRef.current = vehicles[currentVehicleIndex] || vehicles[0];
 
@@ -89,12 +102,47 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
     group.add(bundle.root);
   }, []);
 
-  // Handle incoming events from host (collisions, forced permissions, vehicle swap)
+  // Handle incoming events from host (collisions, forced permissions, world warp, live game state)
   const handleHostEvent = useCallback((event: GameEvent) => {
-    if (event.type === 'COLLISION_TRIGGER') {
+    if (event.type === 'GAME_STATE') {
+      serverVehiclePosRef.current = {
+        x: event.x,
+        y: event.y,
+        z: event.z,
+        yaw: event.yaw,
+        speed: event.speed,
+      };
+      if (!isAudioMuted) {
+        mobileAudio.updateEngineSpeed(Math.abs(event.speed) / 8);
+      }
+    } else if (event.type === 'WORLD_WARP') {
+      const world = getWorldById(event.worldId);
+      if (world) {
+        setActiveWorldName(world.name);
+        setIsWarpingMobile(true);
+        mobileAudio.playPortalWarp();
+        HapticsService.trigger('major', true, 1.3);
+        if (worldGenRef.current) {
+          worldGenRef.current.setWorld(world);
+        }
+        setTimeout(() => setIsWarpingMobile(false), 1200);
+      }
+    } else if (event.type === 'COLLISION_TRIGGER') {
       HapticsService.trigger(event.severity, true, 1.2);
-      if (event.severity !== 'landing') {
+      if (event.isAirItem) {
+        mobileAudio.playStarCollect();
+      } else if (event.severity !== 'landing') {
         mobileAudio.playCrash(event.severity);
+      }
+      if (worldGenRef.current) {
+        worldGenRef.current.triggerConfetti(
+          new THREE.Vector3(
+            serverVehiclePosRef.current.x,
+            serverVehiclePosRef.current.y,
+            serverVehiclePosRef.current.z
+          ),
+          35
+        );
       }
     } else if (event.type === 'SWAP_VEHICLE') {
       const idx = vehicles.findIndex((v) => v.id === event.vehicleId);
@@ -103,11 +151,10 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
         mountVehicle3D(vehicles[idx]);
       }
     } else if (event.type === 'FORCE_REQUEST_PERMISSIONS') {
-      // Parent forced permission prompt from PC
       setShowForcePermissionModal(true);
       mobileAudio.playJump();
     }
-  }, [vehicles, mountVehicle3D]);
+  }, [vehicles, mountVehicle3D, isAudioMuted]);
 
   // Initialize WebRTC client
   useEffect(() => {
@@ -225,17 +272,31 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
     }
   };
 
+  // Test sound and rumble on demand
+  const handleTestAudioAndVibrate = (e: React.MouseEvent | React.TouchEvent) => {
+    e.stopPropagation();
+    mobileAudio.unlockSynchronously();
+    mobileAudio.playTestChime();
+    HapticsService.trigger('major', true, 1.3);
+    setTestChimeActive(true);
+    setTimeout(() => setTestChimeActive(false), 900);
+  };
+
   // Tap-to-Start Permission Handshake
   const handleTapToStart = async () => {
-    // 1. Synchronously trigger permission prompt!
+    // 1. Immediately and synchronously unlock Web Audio on direct user tap
+    mobileAudio.unlockSynchronously();
+
+    // 2. Trigger motion permissions
     triggerPermissionsRequest();
 
-    // 2. Audio Activation & unlock
-    await mobileAudio.resume();
+    // 3. Audio Activation & unlock
+    mobileAudio.setVolume(0.9);
     mobileAudio.startEngine();
     mobileAudio.startBgm();
+    HapticsService.trigger('major', true, 1.2);
 
-    // 3. Fullscreen Lock
+    // 4. Fullscreen Lock
     try {
       const docEl = document.documentElement as HTMLElement & {
         webkitRequestFullscreen?: () => Promise<void>;
@@ -249,7 +310,7 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
       // Ignore
     }
 
-    // 4. Orientation & Wake Lock
+    // 5. Orientation & Wake Lock
     try {
       if (screen.orientation && 'lock' in screen.orientation) {
         await screen.orientation.lock('portrait');
@@ -259,7 +320,7 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
     }
     await requestWakeLock();
 
-    // 5. Start 60Hz data channel stream
+    // 6. Start 60Hz data channel stream
     if (streamIntervalRef.current) {
       window.clearInterval(streamIntervalRef.current);
     }
@@ -275,15 +336,12 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
           data: packet,
         });
       }
-
-      const speedEstimate = 1.0 + Math.max(0, Math.abs(packet.accelY) * 0.8);
-      mobileAudio.updateEngineSpeed(speedEstimate);
     }, 1000 / 60);
 
     setHasStarted(true);
   };
 
-  // 3D Top-Down Viewport Setup on Phone
+  // 3D Top-Down Viewport Setup on Phone (With real procedural map!)
   useEffect(() => {
     if (!hasStarted) return;
     const container = canvasMountRef.current;
@@ -293,12 +351,15 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
     const height = container.clientHeight || window.innerHeight;
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x38bdf8); // Sky blue
     sceneRef.current = scene;
 
-    // Top-Down Camera: positioned 16m directly above the vehicle looking straight down (90 degrees)
-    const camera = new THREE.PerspectiveCamera(45, width / height, 0.5, 100);
-    camera.position.set(0, 16, 0);
+    const initialWorld = getWorldById('sunny_countryside');
+    scene.background = new THREE.Color(initialWorld.skyColor);
+    scene.fog = new THREE.FogExp2(initialWorld.fogColor, 0.012);
+
+    // Top-Down Camera: positioned 26m directly above the vehicle looking straight down (90 degrees)
+    const camera = new THREE.PerspectiveCamera(48, width / height, 0.5, 150);
+    camera.position.set(0, 26, 0);
     camera.lookAt(0, 0, 0);
     cameraRef.current = camera;
 
@@ -311,42 +372,51 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
 
     // Warm sun light directly from above
     const sunLight = new THREE.DirectionalLight(0xfffbeb, 1.8);
-    sunLight.position.set(5, 20, 5);
+    sunLight.position.set(15, 35, 15);
     scene.add(sunLight);
-    scene.add(new THREE.AmbientLight(0xffffff, 0.7));
-
-    // Rolling Grass Ground with Dirt Country Road
-    const groundGeo = new THREE.PlaneGeometry(35, 65);
-    groundGeo.rotateX(-Math.PI / 2);
-    const grass = new THREE.Mesh(groundGeo, new THREE.MeshStandardMaterial({ color: 0x4ade80, roughness: 0.8 }));
-    grass.position.y = -0.1;
-
-    const roadGeo = new THREE.PlaneGeometry(8, 65);
-    roadGeo.rotateX(-Math.PI / 2);
-    const road = new THREE.Mesh(roadGeo, new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.9 }));
-    road.position.y = 0.01;
-    scene.add(grass, road);
+    scene.add(new THREE.AmbientLight(0xffffff, 0.8));
 
     // Add Vehicle Group
     const vGroup = vehicle3DGroupRef.current;
     scene.add(vGroup);
     mountVehicle3D(currentVehicleRef.current);
 
-    // Animation Loop for Phone Top-Down View
+    // Attach full procedural WorldGenerator on phone!
+    const worldGen = new WorldGenerator(scene, initialWorld);
+    worldGenRef.current = worldGen;
+
+    // Animation Loop for Phone Top-Down Map View
     let frameId = 0;
     const clock = new THREE.Clock();
-    let roadScroll = 0;
 
     const tick = () => {
       const delta = Math.min(0.05, clock.getDelta());
+      const elapsed = clock.getElapsedTime();
 
-      // Scroll road texture backward to create authentic top-down driving motion sensation!
-      roadScroll += delta * 14.0;
-      road.position.z = (roadScroll % 10) - 5;
+      // Read real-time position from host or estimate smoothly
+      const s = serverVehiclePosRef.current;
+      vGroup.position.set(s.x, s.y, s.z);
 
-      // Rotate vehicle smoothly to match physical steering yaw
-      const alphaDeg = motionPacketRef.current.alpha;
-      vGroup.rotation.y = (-alphaDeg * Math.PI) / 180;
+      // Rotate vehicle: use server yaw if available, fallback to local gyro
+      if (s.yaw !== 0) {
+        vGroup.rotation.y = s.yaw;
+      } else {
+        const alphaDeg = motionPacketRef.current.alpha;
+        vGroup.rotation.y = (-alphaDeg * Math.PI) / 180;
+      }
+
+      // Camera stays directly overhead following the vehicle
+      camera.position.set(s.x, s.y + 26, s.z);
+      camera.lookAt(s.x, s.y, s.z);
+
+      // Sun tracks vehicle
+      sunLight.position.set(s.x + 15, s.y + 35, s.z + 15);
+      sunLight.target.position.copy(vGroup.position);
+      sunLight.target.updateMatrixWorld();
+
+      // Update procedural world chunks around vehicle on phone!
+      worldGen.updateChunks(vGroup.position, 0.9);
+      worldGen.tick(delta, elapsed);
 
       renderer.render(scene, camera);
       frameId = requestAnimationFrame(tick);
@@ -376,14 +446,13 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
 
   // Touch Swipe to Swap Vehicles
   const handleTouchStart = (e: React.TouchEvent) => {
+    mobileAudio.unlockSynchronously();
     if (e.touches.length > 0) {
       touchStartRef.current = {
         x: e.touches[0].clientX,
         y: e.touches[0].clientY,
         time: Date.now(),
       };
-      // Resume audio context if asleep
-      mobileAudio.resume();
     }
   };
 
@@ -414,6 +483,7 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
 
   const handleManualJump = (e: React.MouseEvent | React.TouchEvent) => {
     e.stopPropagation();
+    mobileAudio.unlockSynchronously();
     motionPacketRef.current.accelZ = 12.0;
     mobileAudio.playJump();
     HapticsService.trigger('landing', true, 1.0);
@@ -424,8 +494,9 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
 
   const toggleAudio = (e: React.MouseEvent) => {
     e.stopPropagation();
+    mobileAudio.unlockSynchronously();
     if (isAudioMuted) {
-      mobileAudio.setVolume(0.85);
+      mobileAudio.setVolume(0.9);
       setIsAudioMuted(false);
     } else {
       mobileAudio.setVolume(0);
@@ -449,37 +520,48 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
     };
   }, [handleDeviceOrientation, handleDeviceMotion]);
 
-  // Phase 1.1: Mobile Tap-to-Start Permission Screen
+  // Phase 1: Mobile Tap-to-Start Screen with Audio & Vibration Test Button
   if (!hasStarted) {
     return (
       <div
         onClick={handleTapToStart}
-        className="fixed inset-0 bg-gradient-to-br from-amber-400 via-orange-500 to-rose-500 flex flex-col items-center justify-between p-8 text-white select-none cursor-pointer overflow-hidden touch-none"
+        className="fixed inset-0 bg-gradient-to-br from-amber-400 via-orange-500 to-rose-500 flex flex-col items-center justify-between p-6 text-white select-none cursor-pointer overflow-hidden touch-none"
       >
-        <div className="pt-8 text-center space-y-2">
+        <div className="pt-6 text-center space-y-2">
           <div className="inline-flex p-4 bg-white/20 backdrop-blur-md rounded-3xl shadow-lg animate-bounce">
-            <Car className="w-16 h-16 text-white" />
+            <Car className="w-14 h-14 text-white" />
           </div>
           <h1 className="text-3xl font-black tracking-tight drop-shadow-md">
             TODDLER DRIVE
           </h1>
-          <p className="text-sm font-medium text-white/90 max-w-xs mx-auto">
-            Turn your phone into a real steering toy for the big screen!
+          <p className="text-xs font-medium text-white/90 max-w-xs mx-auto">
+            Turn your phone into a physical steering controller for the big screen!
           </p>
         </div>
 
-        <div className="w-full max-w-xs py-8 px-6 bg-white text-slate-900 rounded-3xl shadow-2xl flex flex-col items-center text-center transform active:scale-95 transition-transform">
-          <Sparkles className="w-8 h-8 text-amber-500 mb-2 animate-spin" />
-          <span className="text-2xl font-black tracking-wide text-orange-600">
-            TAP TO DRIVE!
-          </span>
-          <span className="text-xs text-slate-500 mt-1">
-            Enables motion steering, sounds & haptics
-          </span>
+        <div className="w-full max-w-xs space-y-3">
+          <div className="py-7 px-6 bg-white text-slate-900 rounded-3xl shadow-2xl flex flex-col items-center text-center transform active:scale-95 transition-transform">
+            <Sparkles className="w-8 h-8 text-amber-500 mb-2 animate-spin" />
+            <span className="text-2xl font-black tracking-wide text-orange-600">
+              TAP TO DRIVE!
+            </span>
+            <span className="text-xs text-slate-500 mt-1">
+              Activates 3D map, steering gyro & sounds
+            </span>
+          </div>
+
+          {/* Test Sound & Buzz button before driving */}
+          <button
+            onClick={handleTestAudioAndVibrate}
+            className="w-full py-3 px-4 bg-white/20 hover:bg-white/30 backdrop-blur-md border border-white/40 rounded-2xl flex items-center justify-center gap-2 text-white font-bold text-xs shadow-lg transition-all active:scale-95"
+          >
+            <Vibrate className="w-4 h-4 text-amber-300" />
+            <span>{testChimeActive ? '🔊 BUZZING & PLAYING!' : '🔊 Test Sound & Vibration'}</span>
+          </button>
         </div>
 
         <div className="pb-4 text-center text-xs text-white/80 space-y-1">
-          <p>Lay flat on table face-up after tapping</p>
+          <p>Lay phone flat on table face-up after tapping</p>
           <div className="flex items-center justify-center gap-1.5 font-mono text-[11px]">
             <span>Session:</span>
             <span className="bg-black/20 px-2 py-0.5 rounded">{sessionId}</span>
@@ -489,30 +571,37 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
     );
   }
 
-  // Phase 2: Real-Time Top-Down 3D Game View on Phone
+  // Phase 2: Real-Time Top-Down 3D Game View on Phone (Full Map + Obstacles + Portals)
   return (
     <div
+      onPointerDown={() => mobileAudio.unlockSynchronously()}
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
       className="fixed inset-0 bg-slate-950 flex flex-col items-center justify-between select-none overflow-hidden touch-none"
     >
-      {/* 3D Top-Down WebGL Viewport Container (Fills phone screen!) */}
+      {/* 3D Top-Down WebGL Viewport Container with Full World Map */}
       <div ref={canvasMountRef} className="absolute inset-0 w-full h-full" />
 
-      {/* Top Status Bar with Sensor Diagnostics */}
+      {/* Top Status Bar with Sensor Diagnostics & World Name */}
       <div className="w-full px-4 pt-3 flex items-center justify-between z-20 pointer-events-none">
         <div className="flex items-center gap-2">
           {connectionState === 'connected' ? (
             <div className="flex items-center gap-1.5 px-3 py-1 bg-emerald-500/30 border border-emerald-400/50 rounded-full text-emerald-200 text-xs font-semibold backdrop-blur-sm shadow-md">
               <span className="w-2 h-2 rounded-full bg-emerald-400" />
-              <span>DRIVING LIVE</span>
+              <span>LIVE</span>
             </div>
           ) : (
             <div className="flex items-center gap-1.5 px-3 py-1 bg-amber-500/30 border border-amber-400/50 rounded-full text-amber-200 text-xs font-semibold backdrop-blur-sm shadow-md">
               <WifiOff className="w-3.5 h-3.5" />
-              <span>RECONNECTING...</span>
+              <span>CONNECTING...</span>
             </div>
           )}
+
+          {/* Active World Badge */}
+          <div className="flex items-center gap-1 px-2.5 py-1 bg-purple-900/60 backdrop-blur-sm border border-purple-400/40 rounded-full text-purple-200 text-[11px] font-bold shadow-md">
+            <Globe className="w-3 h-3 text-purple-300" />
+            <span className="truncate max-w-[120px]">{activeWorldName}</span>
+          </div>
 
           {hasMotionSensor ? (
             <div className="flex items-center gap-1 px-2.5 py-1 bg-slate-900/60 backdrop-blur-sm border border-white/20 rounded-full text-white text-[11px] font-mono shadow-md">
@@ -528,21 +617,32 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
               className="pointer-events-auto flex items-center gap-1.5 px-3 py-1 bg-rose-500 hover:bg-rose-600 text-white rounded-full text-xs font-bold shadow-lg animate-pulse"
             >
               <AlertCircle className="w-3.5 h-3.5" />
-              <span>Tap to Allow Sensors</span>
+              <span>Allow Sensors</span>
             </button>
           )}
         </div>
 
-        {/* Quiet Sound Mute Toggle */}
-        <button
-          onClick={toggleAudio}
-          className="pointer-events-auto p-2 bg-slate-900/60 backdrop-blur-sm hover:bg-slate-900/80 rounded-full text-white shadow-md transition-colors"
-        >
-          {isAudioMuted ? <VolumeX className="w-5 h-5 text-rose-400" /> : <Volume2 className="w-5 h-5" />}
-        </button>
+        {/* Action Buttons: Sound & Vibration Test + Quiet Mute */}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleTestAudioAndVibrate}
+            title="Test audio and physical rumble"
+            className="pointer-events-auto flex items-center gap-1 px-2.5 py-1.5 bg-slate-900/60 hover:bg-slate-900/80 backdrop-blur-sm rounded-full text-white text-xs font-bold shadow-md transition-all active:scale-95"
+          >
+            <Vibrate className="w-3.5 h-3.5 text-amber-300" />
+            <span className="text-[11px]">{testChimeActive ? 'BUZZ!' : 'Test'}</span>
+          </button>
+
+          <button
+            onClick={toggleAudio}
+            className="pointer-events-auto p-2 bg-slate-900/60 backdrop-blur-sm hover:bg-slate-900/80 rounded-full text-white shadow-md transition-colors"
+          >
+            {isAudioMuted ? <VolumeX className="w-4 h-4 text-rose-400" /> : <Volume2 className="w-4 h-4" />}
+          </button>
+        </div>
       </div>
 
-      {/* Floating Tactical Jump Button (Always easily reachable by toddler) */}
+      {/* Floating Tactical Jump Button */}
       <button
         onClick={handleManualJump}
         onTouchStart={handleManualJump}
@@ -555,11 +655,26 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
       {/* Bottom Subtitle Indicator */}
       <div className="w-full pb-4 px-6 text-center z-20 pointer-events-none">
         <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-slate-900/70 backdrop-blur-md rounded-full text-white/80 text-xs font-semibold shadow-lg">
-          <span>Twist phone flat to steer • Slide for speed boost • Swipe to swap vehicle</span>
+          <span>Twist phone to steer • Drive into glowing portals to warp</span>
         </div>
       </div>
 
-      {/* Parent Forced Permission Modal (Popup when PC Parent clicks Force Request) */}
+      {/* Cosmic Warp Overlay on Mobile */}
+      {isWarpingMobile && (
+        <div className="fixed inset-0 z-50 pointer-events-none flex items-center justify-center bg-purple-600/40 backdrop-blur-sm animate-pulse">
+          <div className="p-6 bg-slate-900/90 rounded-3xl shadow-2xl border-2 border-purple-400 text-center animate-bounce">
+            <Sparkles className="w-12 h-12 text-purple-400 mx-auto mb-2 animate-spin" />
+            <div className="text-[11px] font-black text-purple-300 uppercase tracking-widest">
+              WARPING WORLD!
+            </div>
+            <div className="text-xl font-black text-white mt-1">
+              {activeWorldName}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Parent Forced Permission Modal */}
       {showForcePermissionModal && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center">
           <div className="w-full max-w-sm bg-white dark:bg-slate-900 p-6 rounded-3xl shadow-2xl border-2 border-indigo-500 text-slate-900 dark:text-slate-100 space-y-4 animate-bounce">

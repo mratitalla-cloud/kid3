@@ -19,7 +19,8 @@ import { VehiclePhysics } from '../engine/vehiclePhysics';
 import { QRCodeOverlay } from './QRCodeOverlay';
 import { ParentPanel } from './ParentPanel';
 import { desktopAudio } from '../services/audioService';
-import { Settings, RefreshCw, Car, Gauge, Wifi } from 'lucide-react';
+import { getWorldById } from '../worlds';
+import { Settings, RefreshCw, Car, Gauge, Wifi, Sparkles, Globe } from 'lucide-react';
 
 const STORAGE_KEY = 'toddler_drive_parent_settings_v1';
 
@@ -30,6 +31,10 @@ export const DesktopHost: React.FC = () => {
   const [isParentPanelOpen, setIsParentPanelOpen] = useState(false);
   const [vehicles, setVehicles] = useState<VehicleItem[]>(BUILTIN_VEHICLES);
   const [activeVehicleId, setActiveVehicleId] = useState<string>('roadster');
+  const [activeWorldId, setActiveWorldId] = useState<string>('sunny_countryside');
+  const activeWorldIdRef = useRef<string>('sunny_countryside');
+  const [isWarping, setIsWarping] = useState(false);
+  const [warpTargetName, setWarpTargetName] = useState('');
   const [parentPanelMotion, setParentPanelMotion] = useState<MotionPacket | null>(null);
   const [displaySpeed, setDisplaySpeed] = useState<number>(0);
 
@@ -104,6 +109,28 @@ export const DesktopHost: React.FC = () => {
     physicsRef.current.smokeEmitter = bundle.smokeEmitter || null;
     physicsRef.current.setVehicleType(target.type);
   }, [vehicles]);
+
+  // World Switching & Portal Warp
+  const handleSwitchWorld = useCallback((targetWorldId: string) => {
+    const world = getWorldById(targetWorldId);
+    if (!world) return;
+    setActiveWorldId(world.id);
+    activeWorldIdRef.current = world.id;
+    setWarpTargetName(world.name);
+    setIsWarping(true);
+    desktopAudio.playPortalWarp();
+    if (worldGenRef.current) {
+      worldGenRef.current.setWorld(world);
+    }
+    peerServiceRef.current?.send({
+      type: 'WORLD_WARP',
+      worldId: world.id,
+    });
+    setTimeout(() => setIsWarping(false), 1200);
+  }, []);
+
+  const switchWorldRef = useRef(handleSwitchWorld);
+  switchWorldRef.current = handleSwitchWorld;
 
   // Force Request Phone Permissions from Parent Panel
   const handleForceRequestPermissions = () => {
@@ -344,8 +371,8 @@ export const DesktopHost: React.FC = () => {
     // Initial vehicle model mount
     switchVehicleModel('roadster');
 
-    // Procedural Sunny Countryside World Generator
-    const worldGen = new WorldGenerator(scene);
+    // Procedural World Generator initialized with active world
+    const worldGen = new WorldGenerator(scene, getWorldById(activeWorldIdRef.current));
     worldGenRef.current = worldGen;
 
     // Handle Window Resize
@@ -362,6 +389,7 @@ export const DesktopHost: React.FC = () => {
     // Animation Loop
     let frameId = 0;
     const clock = new THREE.Clock();
+    let stateStreamTimer = 0;
 
     const tick = () => {
       const delta = Math.min(0.05, clock.getDelta());
@@ -395,7 +423,7 @@ export const DesktopHost: React.FC = () => {
         }
       );
 
-      // 3. Non-blocking Obstacle & Air Collectibles Collisions check
+      // 3. Non-blocking Obstacle & Air Collectibles Collisions check (including Warp Portals!)
       worldGen.checkCollisions(
         physics.position,
         2.4,
@@ -410,9 +438,28 @@ export const DesktopHost: React.FC = () => {
           peerServiceRef.current?.send({
             type: 'COLLISION_TRIGGER',
             severity,
+            isAirItem,
           });
+        },
+        (targetWorldId) => {
+          switchWorldRef.current(targetWorldId);
         }
       );
+
+      // Broadcast live position, yaw, speed, and world to phone controller (~30 FPS)
+      stateStreamTimer += delta;
+      if (stateStreamTimer >= 0.033) {
+        stateStreamTimer = 0;
+        peerServiceRef.current?.send({
+          type: 'GAME_STATE',
+          x: physics.position.x,
+          y: physics.position.y,
+          z: physics.position.z,
+          yaw: physics.currentYaw,
+          speed: physics.speed,
+          worldId: activeWorldIdRef.current,
+        });
+      }
 
       // 4. Update procedural chunks around vehicle
       worldGen.updateChunks(physics.position, settingsRef.current.groundDensity);
@@ -564,7 +611,24 @@ export const DesktopHost: React.FC = () => {
         onAddCustomVehicle={handleAddCustomVehicle}
         activeVehicles={vehicles}
         onForceRequestPermissions={handleForceRequestPermissions}
+        currentWorldId={activeWorldId}
+        onSelectWorld={handleSwitchWorld}
       />
+
+      {/* Cosmic Warp Portal Transition Screen Flash */}
+      {isWarping && (
+        <div className="fixed inset-0 z-50 pointer-events-none flex items-center justify-center bg-purple-600/30 backdrop-blur-sm animate-pulse">
+          <div className="p-8 bg-white/95 dark:bg-slate-900/95 rounded-3xl shadow-2xl border-4 border-purple-400 text-center animate-bounce">
+            <Sparkles className="w-16 h-16 text-purple-600 mx-auto mb-3 animate-spin" />
+            <div className="text-xs font-black tracking-widest text-purple-600 uppercase">
+              COSMIC STARGATE WARP!
+            </div>
+            <div className="text-3xl font-black text-slate-900 dark:text-slate-100 mt-1">
+              {warpTargetName}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
