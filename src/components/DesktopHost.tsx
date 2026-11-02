@@ -35,6 +35,7 @@ export const DesktopHost: React.FC = () => {
   const activeWorldIdRef = useRef<string>('sunny_countryside');
   const [isWarping, setIsWarping] = useState(false);
   const [warpTargetName, setWarpTargetName] = useState('');
+  const [activePowerUpToast, setActivePowerUpToast] = useState<{ name: string; icon: string } | null>(null);
   const [parentPanelMotion, setParentPanelMotion] = useState<MotionPacket | null>(null);
   const [displaySpeed, setDisplaySpeed] = useState<number>(0);
 
@@ -423,7 +424,7 @@ export const DesktopHost: React.FC = () => {
         }
       );
 
-      // 3. Non-blocking Obstacle & Air Collectibles Collisions check (including Warp Portals!)
+      // 3. Non-blocking Obstacle & Interactive Collisions check (Boosts, Springs, Coins, Mystery Boxes, Portals!)
       worldGen.checkCollisions(
         physics.position,
         2.4,
@@ -434,7 +435,6 @@ export const DesktopHost: React.FC = () => {
           } else {
             desktopAudio.playCrash(severity);
           }
-          // Send vibration & audio trigger packet to mobile over WebRTC
           peerServiceRef.current?.send({
             type: 'COLLISION_TRIGGER',
             severity,
@@ -443,10 +443,43 @@ export const DesktopHost: React.FC = () => {
         },
         (targetWorldId) => {
           switchWorldRef.current(targetWorldId);
+        },
+        (action, noteIndex, powerUp) => {
+          if (action === 'boost') {
+            physics.triggerTurboBoost(24.0, 2.5);
+            desktopAudio.playTurboBoost();
+            peerServiceRef.current?.send({ type: 'INTERACTIVE_TRIGGER', action: 'boost' });
+          } else if (action === 'spring') {
+            physics.triggerSuperBounce(22.0);
+            desktopAudio.playSpringBounce();
+            peerServiceRef.current?.send({ type: 'INTERACTIVE_TRIGGER', action: 'spring' });
+          } else if (action === 'coin') {
+            desktopAudio.playCoinNote(noteIndex ?? 0);
+            peerServiceRef.current?.send({ type: 'INTERACTIVE_TRIGGER', action: 'coin', noteIndex });
+          } else if (action === 'mystery') {
+            const pType = (powerUp as 'giant' | 'rainbow' | 'coins') || 'giant';
+            physics.triggerPowerUp(pType, 7.0);
+            desktopAudio.playMysteryFanfare();
+            const toastMap = {
+              giant: { name: 'MEGA GIANT CAR!', icon: '🌟' },
+              rainbow: { name: 'RAINBOW TURBO BOOST!', icon: '🚀' },
+              coins: { name: 'COIN SHOWER BURST!', icon: '🪙' },
+            };
+            setActivePowerUpToast(toastMap[pType] || toastMap.giant);
+            setTimeout(() => setActivePowerUpToast(null), 4500);
+            peerServiceRef.current?.send({ type: 'INTERACTIVE_TRIGGER', action: 'mystery', powerUp: pType });
+          } else if (action === 'creature') {
+            if (powerUp === 'moo') desktopAudio.playMoo();
+            else if (powerUp === 'squawk') desktopAudio.playSquawk();
+            else if (powerUp === 'dino_roar') desktopAudio.playDinoRoar();
+            else if (powerUp === 'ufo') desktopAudio.playUfoHum();
+            else desktopAudio.playCrash('minor');
+            peerServiceRef.current?.send({ type: 'INTERACTIVE_TRIGGER', action: 'creature', powerUp });
+          }
         }
       );
 
-      // Broadcast live position, yaw, speed, and world to phone controller (~30 FPS)
+      // Broadcast live position, yaw, speed, world, and active power-up to phone controller (~30 FPS)
       stateStreamTimer += delta;
       if (stateStreamTimer >= 0.033) {
         stateStreamTimer = 0;
@@ -458,12 +491,13 @@ export const DesktopHost: React.FC = () => {
           yaw: physics.currentYaw,
           speed: physics.speed,
           worldId: activeWorldIdRef.current,
+          powerUp: physics.powerUpActive || undefined,
         });
       }
 
       // 4. Update procedural chunks around vehicle
       worldGen.updateChunks(physics.position, settingsRef.current.groundDensity);
-      worldGen.tick(delta, elapsed);
+      worldGen.tick(delta, elapsed, physics.position);
 
       // 5. Update Sun light position to follow vehicle for crisp shadows
       sunLight.position.set(
@@ -528,6 +562,16 @@ export const DesktopHost: React.FC = () => {
 
       {/* QR Code Signaling Overlay (Top Left) */}
       <QRCodeOverlay sessionId={sessionId} connectionState={connectionState} />
+
+      {/* Active Mystery Power-Up Celebration Toast */}
+      {activePowerUpToast && (
+        <div className="absolute top-6 left-1/2 -translate-x-1/2 z-40 pointer-events-none animate-bounce">
+          <div className="flex items-center gap-3 px-6 py-3 bg-gradient-to-r from-amber-500 via-purple-600 to-indigo-600 text-white font-black text-sm rounded-full shadow-2xl border-2 border-white/60">
+            <span className="text-2xl">{activePowerUpToast.icon}</span>
+            <span className="tracking-wide uppercase">{activePowerUpToast.name}</span>
+          </div>
+        </div>
+      )}
 
       {/* Top Right Quick Bar (Parent Panel Button) */}
       <div className="absolute top-4 right-4 z-40 flex items-center gap-2">

@@ -70,6 +70,8 @@ export const myCustomWorld: WorldDefinition = {
   roadColor: 0x...,
   ambientLightColor: 0xffffff,
   sunLightColor: 0xfffbeb,
+  particleType: 'blossoms', // 'blossoms' | 'sprinkles' | 'embers' | 'stars'
+  particleColor: 0x...,
 
   spawnChunkObjects: (
     chunk,
@@ -83,11 +85,19 @@ export const myCustomWorld: WorldDefinition = {
     registerCollidable,
     availableWorldIds
   ) => {
-    // 1. Landmark structures (Houses, towers, statues, ruins)
-    // 2. Roadside boundaries (Fences, coral walls, lampposts)
-    // 3. Scatter items (Trees, boulders, treasures, friendly creatures)
-    // 4. Air items (Golden star rings, floating clouds or jellyfish at y: 12m-26m)
-    // 5. Random Warp Portal (spawns ~25% chance per chunk on side of road connecting to another world in availableWorldIds)
+    // 1. Landmark structures (Drive-through arches, towers, castles)
+    // 2. Turbo Boost Chevrons on Road (type: 'boost_pad')
+    // 3. Super Bounce Jump Springs / Trampolines (type: 'jump_pad')
+    // 4. Musical Melody Coins (type: 'coin', extraData: { noteIndex: 0..7 })
+    // 5. Surprise Mystery Gift Boxes (type: 'mystery_box')
+    // 6. Interactive Creatures / Animals (type: 'creature', extraData: { sound: 'moo' | 'squawk' | 'dino_roar' | 'ufo' })
+    // 7. Air Hoops / Star Rings (type: 'star_ring', isAirObject: true)
+    // 8. Random Stargate Warp Portal (type: 'portal', portalTargetWorldId)
+  },
+
+  // Optional live animation tick per chunk:
+  tickChunk: (chunk, delta, elapsed, carPos) => {
+    // animate windmills, creature heads, beacons, or tractor beams
   }
 };
 \`\`\`
@@ -96,6 +106,6 @@ Rules:
 - High contrast, vibrant toddler-friendly cartoon palette.
 - Use clean low-poly Three.js primitives (BoxGeometry, CylinderGeometry, ConeGeometry, SphereGeometry, TorusGeometry).
 - Keep geometries shared or lightweight.
-- Collidables must call \`registerCollidable(id, type, pos, radius, mesh, severity, isAirObject, portalTargetWorldId?)\`.
+- Collidables must call \`registerCollidable(id, type, pos, radius, mesh, severity, isAirObject, portalTargetWorldId?, extraData?)\`.
 - For random portals, pick a target from \`availableWorldIds\`.`;
 }

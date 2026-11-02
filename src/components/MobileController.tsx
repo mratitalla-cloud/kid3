@@ -102,7 +102,7 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
     group.add(bundle.root);
   }, []);
 
-  // Handle incoming events from host (collisions, forced permissions, world warp, live game state)
+  // Handle incoming events from host (collisions, forced permissions, world warp, live game state, interactive triggers)
   const handleHostEvent = useCallback((event: GameEvent) => {
     if (event.type === 'GAME_STATE') {
       serverVehiclePosRef.current = {
@@ -114,6 +114,32 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
       };
       if (!isAudioMuted) {
         mobileAudio.updateEngineSpeed(Math.abs(event.speed) / 8);
+      }
+      if (event.powerUp === 'giant') {
+        vehicle3DGroupRef.current.scale.set(2.2, 2.2, 2.2);
+      } else {
+        vehicle3DGroupRef.current.scale.set(1.0, 1.0, 1.0);
+      }
+    } else if (event.type === 'INTERACTIVE_TRIGGER') {
+      if (event.action === 'boost') {
+        mobileAudio.playTurboBoost();
+        HapticsService.trigger('major', true, 1.4);
+      } else if (event.action === 'spring') {
+        mobileAudio.playSpringBounce();
+        HapticsService.trigger('major', true, 1.5);
+      } else if (event.action === 'coin') {
+        mobileAudio.playCoinNote(event.noteIndex ?? 0);
+        HapticsService.trigger('minor', true, 0.7);
+      } else if (event.action === 'mystery') {
+        mobileAudio.playMysteryFanfare();
+        HapticsService.trigger('major', true, 1.5);
+      } else if (event.action === 'creature') {
+        if (event.powerUp === 'moo') mobileAudio.playMoo();
+        else if (event.powerUp === 'squawk') mobileAudio.playSquawk();
+        else if (event.powerUp === 'dino_roar') mobileAudio.playDinoRoar();
+        else if (event.powerUp === 'ufo') mobileAudio.playUfoHum();
+        else mobileAudio.playCrash('minor');
+        HapticsService.trigger('minor', true, 1.1);
       }
     } else if (event.type === 'WORLD_WARP') {
       const world = getWorldById(event.worldId);
@@ -416,7 +442,7 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
 
       // Update procedural world chunks around vehicle on phone!
       worldGen.updateChunks(vGroup.position, 0.9);
-      worldGen.tick(delta, elapsed);
+      worldGen.tick(delta, elapsed, vGroup.position);
 
       renderer.render(scene, camera);
       frameId = requestAnimationFrame(tick);

@@ -5,7 +5,7 @@
 
 import * as THREE from 'three';
 import { CollisionSeverity } from '../types/game';
-import { WorldDefinition } from '../worlds/types';
+import { WorldDefinition, InteractiveObjectType } from '../worlds/types';
 import { sunnyCountrysideWorld, getAllAvailableWorldIds } from '../worlds';
 
 export interface DebrisPiece {
@@ -15,20 +15,7 @@ export interface DebrisPiece {
   life: number;
 }
 
-export type CollidableType =
-  | 'barn'
-  | 'windmill'
-  | 'fence'
-  | 'hay'
-  | 'tree'
-  | 'cow'
-  | 'star_ring'
-  | 'rainbow_cloud'
-  | 'balloon'
-  | 'candy'
-  | 'dino'
-  | 'crystal'
-  | 'portal';
+export type CollidableType = InteractiveObjectType;
 
 export interface CollidableObject {
   id: string;
@@ -43,6 +30,7 @@ export interface CollidableObject {
   isDestroyed: boolean;
   respawnTime: number;
   portalTargetWorldId?: string;
+  extraData?: { noteIndex?: number; powerUp?: string; sound?: string };
 }
 
 export class WorldGenerator {
@@ -52,7 +40,6 @@ export class WorldGenerator {
   private activeChunks = new Map<string, THREE.Group>();
   private collidables: CollidableObject[] = [];
   private activeDebris: DebrisPiece[] = [];
-  private animatedProps: THREE.Object3D[] = [];
   private animatedAirObjects: { mesh: THREE.Object3D; startY: number; speed: number; offset: number }[] = [];
 
   // Confetti Particle Pool
@@ -62,9 +49,14 @@ export class WorldGenerator {
     rotations: THREE.Vector3[];
     life: number[];
   } | null = null;
-  private maxConfetti = 240;
+  private maxConfetti = 260;
 
-  // Cached materials for debris
+  // Environmental Weather Particle System (blossoms, sprinkles, embers, stars)
+  private weatherPoints: THREE.Points | null = null;
+  private weatherVelocities: THREE.Vector3[] = [];
+  private weatherCount = 350;
+
+  // Cached materials for debris & effects
   private woodMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.7 });
   private foliageMat = new THREE.MeshStandardMaterial({ color: 0x22c55e, roughness: 0.5 });
   private appleMat = new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.3 });
@@ -73,6 +65,8 @@ export class WorldGenerator {
   private candyMat = new THREE.MeshStandardMaterial({ color: 0xec4899, roughness: 0.3 });
   private boneMat = new THREE.MeshStandardMaterial({ color: 0xfef3c7, roughness: 0.5 });
   private crystalMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, emissive: 0x0284c7, roughness: 0.2 });
+  private featherMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.8 });
+  private mysteryShardMat = new THREE.MeshStandardMaterial({ color: 0xa855f7, emissive: 0xc084fc, roughness: 0.2 });
 
   // Ground and road materials cached per world
   private groundMaterial: THREE.MeshStandardMaterial;
@@ -92,6 +86,7 @@ export class WorldGenerator {
     });
 
     this.initConfettiSystem();
+    this.initWeatherSystem(initialWorld);
     this.applyWorldAtmosphere(initialWorld);
   }
 
@@ -100,6 +95,7 @@ export class WorldGenerator {
     this.groundMaterial.color.setHex(newWorld.groundColor);
     this.roadMaterial.color.setHex(newWorld.roadColor);
     this.applyWorldAtmosphere(newWorld);
+    this.initWeatherSystem(newWorld);
     this.clearAllChunks();
   }
 
@@ -123,12 +119,60 @@ export class WorldGenerator {
     }
     this.activeChunks.clear();
     this.collidables = [];
-    this.animatedProps = [];
     this.animatedAirObjects = [];
   }
 
+  // Weather Particles System
+  private initWeatherSystem(world: WorldDefinition): void {
+    if (this.weatherPoints) {
+      this.scene.remove(this.weatherPoints);
+      this.weatherPoints.geometry.dispose();
+      this.weatherPoints = null;
+    }
+
+    const count = this.weatherCount;
+    const geometry = new THREE.BufferGeometry();
+    const positions = new Float32Array(count * 3);
+    this.weatherVelocities = [];
+
+    const pType = world.particleType || 'blossoms';
+    const pColor = world.particleColor || 0xffffff;
+
+    for (let i = 0; i < count; i++) {
+      positions[i * 3] = (Math.random() - 0.5) * 80;
+      positions[i * 3 + 1] = Math.random() * 25 + 1.0;
+      positions[i * 3 + 2] = (Math.random() - 0.5) * 80;
+
+      if (pType === 'embers') {
+        this.weatherVelocities.push(
+          new THREE.Vector3((Math.random() - 0.5) * 2, 2.5 + Math.random() * 3, (Math.random() - 0.5) * 2)
+        );
+      } else if (pType === 'stars') {
+        this.weatherVelocities.push(
+          new THREE.Vector3((Math.random() - 0.5) * 1.5, (Math.random() - 0.5) * 1.5, (Math.random() - 0.5) * 1.5)
+        );
+      } else {
+        // Falling petals or sprinkles
+        this.weatherVelocities.push(
+          new THREE.Vector3((Math.random() - 0.5) * 3, -1.5 - Math.random() * 2.5, (Math.random() - 0.5) * 3)
+        );
+      }
+    }
+
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    const mat = new THREE.PointsMaterial({
+      color: pColor,
+      size: pType === 'stars' ? 0.7 : 0.85,
+      transparent: true,
+      opacity: 0.85,
+    });
+
+    this.weatherPoints = new THREE.Points(geometry, mat);
+    this.scene.add(this.weatherPoints);
+  }
+
   private initConfettiSystem(): void {
-    const geo = new THREE.PlaneGeometry(0.4, 0.4);
+    const geo = new THREE.PlaneGeometry(0.45, 0.45);
     const mat = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide });
     const mesh = new THREE.InstancedMesh(geo, mat, this.maxConfetti);
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -181,9 +225,9 @@ export class WorldGenerator {
         mesh.setMatrixAt(i, dummy);
 
         velocities[i].set(
-          (Math.random() - 0.5) * 12,
-          6 + Math.random() * 8,
-          (Math.random() - 0.5) * 12
+          (Math.random() - 0.5) * 14,
+          6 + Math.random() * 9,
+          (Math.random() - 0.5) * 14
         );
         rotations[i].set(
           Math.random() * 0.4,
@@ -203,13 +247,47 @@ export class WorldGenerator {
    */
   public destroyObject(obj: CollidableObject): void {
     obj.isDestroyed = true;
-    obj.respawnTime = performance.now() + 8500; // Respawns after 8.5 seconds
-    obj.mesh.visible = false; // Hide main structure
+    obj.respawnTime = performance.now() + 8500;
+    obj.mesh.visible = false;
 
     this.triggerConfetti(obj.position, obj.severity === 'major' ? 50 : 30);
     const pos = obj.position;
 
     switch (obj.type) {
+      case 'chicken': {
+        // Pop soft white feathers everywhere!
+        const featherGeo = new THREE.PlaneGeometry(0.35, 0.5);
+        for (let i = 0; i < 6; i++) {
+          const feather = new THREE.Mesh(featherGeo, this.featherMat);
+          feather.position.set(pos.x + (Math.random() - 0.5), pos.y + 0.5, pos.z + (Math.random() - 0.5));
+          this.scene.add(feather);
+          this.activeDebris.push({
+            mesh: feather,
+            velocity: new THREE.Vector3((Math.random() - 0.5) * 6, 3 + Math.random() * 4, (Math.random() - 0.5) * 6),
+            angularVelocity: new THREE.Vector3(Math.random() * 6, Math.random() * 6, Math.random() * 6),
+            life: 2.2,
+          });
+        }
+        break;
+      }
+
+      case 'mystery_box': {
+        // Shards of purple gift box burst outward with coins!
+        const shardGeo = new THREE.BoxGeometry(0.4, 0.4, 0.4);
+        for (let i = 0; i < 6; i++) {
+          const shard = new THREE.Mesh(shardGeo, this.mysteryShardMat);
+          shard.position.set(pos.x + (Math.random() - 0.5), pos.y + 0.8, pos.z + (Math.random() - 0.5));
+          this.scene.add(shard);
+          this.activeDebris.push({
+            mesh: shard,
+            velocity: new THREE.Vector3((Math.random() - 0.5) * 9, 5 + Math.random() * 6, (Math.random() - 0.5) * 9),
+            angularVelocity: new THREE.Vector3(Math.random() * 8, Math.random() * 8, Math.random() * 8),
+            life: 2.5,
+          });
+        }
+        break;
+      }
+
       case 'fence': {
         const plankGeo = new THREE.BoxGeometry(0.18, 0.22, 1.8);
         for (let i = 0; i < 4; i++) {
@@ -334,24 +412,15 @@ export class WorldGenerator {
         break;
       }
 
-      case 'portal': {
-        // Portal vortex flashes and creates immense confetti ring
-        this.triggerConfetti(pos, 60);
-        break;
-      }
-
       case 'cow': {
-        obj.mesh.visible = true; // Comical backflip
+        obj.mesh.visible = true; // Comical bounce
         obj.mesh.position.y += 2.0;
         break;
       }
 
-      case 'star_ring':
-      case 'rainbow_cloud':
-      case 'balloon': {
-        this.triggerConfetti(pos, 45);
+      default:
+        this.triggerConfetti(pos, 35);
         break;
-      }
     }
   }
 
@@ -391,7 +460,7 @@ export class WorldGenerator {
     const originZ = cz * this.chunkSize;
     chunk.position.set(originX, 0, originZ);
 
-    // Ground Plane with current world theme
+    // Ground Plane
     const groundGeo = new THREE.PlaneGeometry(this.chunkSize, this.chunkSize, 6, 6);
     groundGeo.rotateX(-Math.PI / 2);
     const ground = new THREE.Mesh(groundGeo, this.groundMaterial);
@@ -399,7 +468,7 @@ export class WorldGenerator {
     ground.receiveShadow = true;
     chunk.add(ground);
 
-    // Country / Theme Dirt Road
+    // Themed Road
     const pathGeo = new THREE.PlaneGeometry(7.0, this.chunkSize + 1);
     pathGeo.rotateX(-Math.PI / 2);
     const path = new THREE.Mesh(pathGeo, this.roadMaterial);
@@ -421,9 +490,10 @@ export class WorldGenerator {
       mesh: THREE.Object3D,
       severity: CollisionSeverity,
       isAirObject: boolean,
-      portalTargetWorldId?: string
+      portalTargetWorldId?: string,
+      extraData?: { noteIndex?: number; powerUp?: string; sound?: string }
     ) => {
-      if (this.collidables.length > 350) {
+      if (this.collidables.length > 400) {
         this.collidables.shift();
       }
       this.collidables.push({
@@ -439,6 +509,7 @@ export class WorldGenerator {
         isDestroyed: false,
         respawnTime: 0,
         portalTargetWorldId,
+        extraData,
       });
 
       if (isAirObject) {
@@ -470,22 +541,23 @@ export class WorldGenerator {
   }
 
   /**
-   * Check vehicle collisions in full 3D (X, Y, Z), including portal warp detection!
+   * Check vehicle collisions in full 3D, including interactive boost pads, springs, coins, and mystery boxes!
    */
   public checkCollisions(
     carPos: THREE.Vector3,
     carRadius = 2.4,
     isAirVehicle = false,
     onCollision: (severity: CollisionSeverity, isAirItem?: boolean) => void,
-    onPortalWarp?: (targetWorldId: string) => void
+    onPortalWarp?: (targetWorldId: string) => void,
+    onInteractive?: (action: 'boost' | 'spring' | 'coin' | 'mystery' | 'creature', noteIndex?: number, powerUp?: string) => void
   ): void {
     const now = performance.now();
 
     for (let i = 0; i < this.collidables.length; i++) {
       const obj = this.collidables[i];
-      if (obj.isDestroyed || now - obj.hitTimestamp < 1500) continue;
+      if (obj.isDestroyed || now - obj.hitTimestamp < 1200) continue;
 
-      // Check portal warp
+      // 1. Check portal warp
       if (obj.type === 'portal') {
         const dx = carPos.x - obj.position.x;
         const dz = carPos.z - obj.position.z;
@@ -501,7 +573,73 @@ export class WorldGenerator {
         continue;
       }
 
-      // Height check: grounded cars ignore high air rings; flying planes check 3D distance
+      // 2. Interactive Boost Pads (Turbo Rocket Launch!)
+      if (obj.type === 'boost_pad') {
+        const dx = carPos.x - obj.position.x;
+        const dz = carPos.z - obj.position.z;
+        if (Math.hypot(dx, dz) < carRadius + obj.radius) {
+          obj.hitTimestamp = now;
+          this.triggerConfetti(obj.position, 18);
+          if (onInteractive) onInteractive('boost');
+        }
+        continue;
+      }
+
+      // 3. Interactive Jump Springs / Geysers / Repulsors
+      if (obj.type === 'jump_pad') {
+        const dx = carPos.x - obj.position.x;
+        const dz = carPos.z - obj.position.z;
+        if (Math.hypot(dx, dz) < carRadius + obj.radius) {
+          obj.hitTimestamp = now;
+          this.triggerConfetti(obj.position, 22);
+          if (onInteractive) onInteractive('spring');
+        }
+        continue;
+      }
+
+      // 4. Musical Melody Coins (Ascending major scale)
+      if (obj.type === 'coin') {
+        const dist = carPos.distanceTo(obj.position);
+        if (dist < carRadius + obj.radius) {
+          obj.hitTimestamp = now;
+          obj.isDestroyed = true;
+          obj.mesh.visible = false;
+          obj.respawnTime = now + 6000;
+          this.triggerConfetti(obj.position, 12);
+          if (onInteractive) onInteractive('coin', obj.extraData?.noteIndex ?? 0);
+        }
+        continue;
+      }
+
+      // 5. Surprise Mystery Gift Boxes (Mario Kart style power-ups)
+      if (obj.type === 'mystery_box') {
+        const dist = carPos.distanceTo(obj.position);
+        if (dist < carRadius + obj.radius) {
+          obj.hitTimestamp = now;
+          obj.isDestroyed = true;
+          obj.mesh.visible = false;
+          obj.respawnTime = now + 9000;
+          this.triggerConfetti(obj.position, 50);
+          const powerUps = ['giant', 'rainbow', 'coins'];
+          const chosen = powerUps[Math.floor(Math.random() * powerUps.length)];
+          if (onInteractive) onInteractive('mystery', undefined, chosen);
+        }
+        continue;
+      }
+
+      // 6. Interactive Animals & Creatures (Mooing cows, squawking chickens, etc.)
+      if (obj.type === 'creature' || obj.type === 'chicken' || obj.type === 'cow') {
+        const dist = Math.hypot(carPos.x - obj.position.x, carPos.z - obj.position.z);
+        if (dist < carRadius + obj.radius) {
+          obj.hitTimestamp = now;
+          this.destroyObject(obj);
+          if (onInteractive) onInteractive('creature', undefined, obj.extraData?.sound || obj.type);
+          onCollision(obj.severity);
+        }
+        continue;
+      }
+
+      // 7. Height check for standard obstacles
       const dy = carPos.y - obj.position.y;
       if (!isAirVehicle && obj.isAirObject) continue;
       if (Math.abs(dy) > carRadius + obj.radius + 1.5) continue;
@@ -520,7 +658,7 @@ export class WorldGenerator {
     }
   }
 
-  public tick(delta: number, elapsed: number): void {
+  public tick(delta: number, elapsed: number, carPos: THREE.Vector3 = new THREE.Vector3()): void {
     const now = performance.now();
 
     // 1. Respawn destroyed objects after countdown
@@ -561,19 +699,60 @@ export class WorldGenerator {
       }
     }
 
-    // 3. Animated windmills & props
-    for (let i = 0; i < this.animatedProps.length; i++) {
-      this.animatedProps[i].rotation.z += delta * 1.5;
-    }
-
-    // 4. Bob and spin air objects
+    // 3. Bob and spin air objects (rings, clouds, pterodactyls)
     for (let i = 0; i < this.animatedAirObjects.length; i++) {
       const o = this.animatedAirObjects[i];
       o.mesh.position.y = o.startY + Math.sin(elapsed * o.speed + o.offset) * 1.8;
       o.mesh.rotation.y += delta * 1.2;
     }
 
-    // 5. Update confetti particles
+    // 4. Update Environmental Weather Particles (follow car position)
+    if (this.weatherPoints) {
+      const posAttr = this.weatherPoints.geometry.getAttribute('position') as THREE.BufferAttribute;
+      const count = this.weatherCount;
+      const pType = this.currentWorld.particleType || 'blossoms';
+
+      for (let i = 0; i < count; i++) {
+        let x = posAttr.getX(i);
+        let y = posAttr.getY(i);
+        let z = posAttr.getZ(i);
+        const vel = this.weatherVelocities[i];
+
+        x += vel.x * delta;
+        y += vel.y * delta;
+        z += vel.z * delta;
+
+        // Wrap around car position in a bounding cylinder
+        if (pType === 'embers') {
+          if (y > carPos.y + 22) {
+            y = carPos.y + 0.5;
+            x = carPos.x + (Math.random() - 0.5) * 60;
+            z = carPos.z + (Math.random() - 0.5) * 60;
+          }
+        } else {
+          if (y < carPos.y + 0.5) {
+            y = carPos.y + 22;
+            x = carPos.x + (Math.random() - 0.5) * 60;
+            z = carPos.z + (Math.random() - 0.5) * 60;
+          }
+        }
+
+        if (Math.abs(x - carPos.x) > 40) x = carPos.x + (Math.random() - 0.5) * 60;
+        if (Math.abs(z - carPos.z) > 40) z = carPos.z + (Math.random() - 0.5) * 60;
+
+        posAttr.setXYZ(i, x, y, z);
+      }
+      posAttr.needsUpdate = true;
+    }
+
+    // 5. Call custom dynamic chunk tick on each active chunk for living world animation!
+    if (this.currentWorld.tickChunk) {
+      for (const [, chunk] of this.activeChunks.entries()) {
+        this.currentWorld.tickChunk(chunk, delta, elapsed, carPos);
+      }
+    }
+
+    // 6. Update confetti particles
     if (this.confettiParticles) {
       const { velocities, rotations, life, mesh } = this.confettiParticles;
       const dummy = new THREE.Matrix4();

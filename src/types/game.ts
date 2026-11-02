@@ -21,11 +21,12 @@ export type GameEvent =
   | { type: 'MOTION'; data: MotionPacket }
   | { type: 'SWAP_VEHICLE'; vehicleId: string }
   | { type: 'COLLISION_TRIGGER'; severity: CollisionSeverity; isAirItem?: boolean }
+  | { type: 'INTERACTIVE_TRIGGER'; action: 'boost' | 'spring' | 'coin' | 'mystery' | 'creature'; noteIndex?: number; powerUp?: string }
   | { type: 'CALIBRATE_BASELINE'; baselineAlpha: number }
   | { type: 'FORCE_REQUEST_PERMISSIONS' }
   | { type: 'RESET_SPAWN' }
   | { type: 'WORLD_WARP'; worldId: string }
-  | { type: 'GAME_STATE'; x: number; y: number; z: number; yaw: number; speed: number; worldId: string }
+  | { type: 'GAME_STATE'; x: number; y: number; z: number; yaw: number; speed: number; worldId: string; powerUp?: string }
   | { type: 'PING'; timestamp: number }
   | { type: 'PONG'; timestamp: number };
 

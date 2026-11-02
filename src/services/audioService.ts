@@ -379,6 +379,241 @@ export class AudioService {
   }
 
   /**
+   * High-octane turbo boost rocket thrust
+   */
+  public playTurboBoost(): void {
+    if (!this.ctx || !this.masterGain) return;
+    try {
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(140, now);
+      osc.frequency.exponentialRampToValueAtTime(750, now + 0.45);
+
+      gain.gain.setValueAtTime(0.35, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
+
+      osc.connect(gain);
+      gain.connect(this.masterGain);
+
+      osc.start(now);
+      osc.stop(now + 0.6);
+      this.playHapticThud(1.4);
+    } catch {
+      // Ignore
+    }
+  }
+
+  /**
+   * Classic cartoon bouncy spring "BOOIIING!"
+   */
+  public playSpringBounce(): void {
+    if (!this.ctx || !this.masterGain) return;
+    try {
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(180, now);
+      osc.frequency.exponentialRampToValueAtTime(620, now + 0.18);
+      osc.frequency.exponentialRampToValueAtTime(320, now + 0.35);
+
+      gain.gain.setValueAtTime(0.4, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
+
+      osc.connect(gain);
+      gain.connect(this.masterGain);
+
+      osc.start(now);
+      osc.stop(now + 0.5);
+      this.playHapticThud(1.5);
+    } catch {
+      // Ignore
+    }
+  }
+
+  /**
+   * Musical coin scale chime (C, D, E, F, G, A, B, C5)
+   */
+  public playCoinNote(noteIdx = 0): void {
+    if (!this.ctx || !this.masterGain) return;
+    try {
+      const scale = [261.63, 293.66, 329.63, 349.23, 392.0, 440.0, 493.88, 523.25, 659.25, 783.99];
+      const freq = scale[noteIdx % scale.length];
+      const now = this.ctx.currentTime;
+
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(freq, now);
+
+      gain.gain.setValueAtTime(0.3, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+
+      osc.connect(gain);
+      gain.connect(this.masterGain);
+
+      osc.start(now);
+      osc.stop(now + 0.38);
+    } catch {
+      // Ignore
+    }
+  }
+
+  /**
+   * Celebratory Mario Kart style mystery fanfare
+   */
+  public playMysteryFanfare(): void {
+    if (!this.ctx || !this.masterGain) return;
+    try {
+      const now = this.ctx.currentTime;
+      [523.25, 659.25, 783.99, 1046.5].forEach((freq, idx) => {
+        if (!this.ctx || !this.masterGain) return;
+        const noteTime = now + idx * 0.08;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(freq, noteTime);
+
+        gain.gain.setValueAtTime(0.35, noteTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, noteTime + 0.3);
+
+        osc.connect(gain);
+        gain.connect(this.masterGain);
+
+        osc.start(noteTime);
+        osc.stop(noteTime + 0.35);
+      });
+      this.playHapticThud(1.3);
+    } catch {
+      // Ignore
+    }
+  }
+
+  /**
+   * Comical synthesized cow moo
+   */
+  public playMoo(): void {
+    if (!this.ctx || !this.masterGain) return;
+    try {
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(120, now);
+      osc.frequency.linearRampToValueAtTime(95, now + 0.3);
+      osc.frequency.linearRampToValueAtTime(110, now + 0.6);
+
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(380, now);
+
+      gain.gain.setValueAtTime(0.25, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.75);
+
+      osc.connect(filter);
+      filter.connect(gain);
+      gain.connect(this.masterGain);
+
+      osc.start(now);
+      osc.stop(now + 0.8);
+    } catch {
+      // Ignore
+    }
+  }
+
+  /**
+   * Silly chicken flutter squawk
+   */
+  public playSquawk(): void {
+    if (!this.ctx || !this.masterGain) return;
+    try {
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(450, now);
+      osc.frequency.exponentialRampToValueAtTime(800, now + 0.1);
+      osc.frequency.exponentialRampToValueAtTime(350, now + 0.25);
+
+      gain.gain.setValueAtTime(0.28, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+
+      osc.connect(gain);
+      gain.connect(this.masterGain);
+
+      osc.start(now);
+      osc.stop(now + 0.3);
+    } catch {
+      // Ignore
+    }
+  }
+
+  /**
+   * Prehistoric low rumble dinosaur roar
+   */
+  public playDinoRoar(): void {
+    if (!this.ctx || !this.masterGain) return;
+    try {
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(65, now);
+      osc.frequency.linearRampToValueAtTime(45, now + 0.4);
+      osc.frequency.linearRampToValueAtTime(80, now + 0.8);
+
+      gain.gain.setValueAtTime(0.3, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.85);
+
+      osc.connect(gain);
+      gain.connect(this.masterGain);
+
+      osc.start(now);
+      osc.stop(now + 0.9);
+      this.playHapticThud(1.5);
+    } catch {
+      // Ignore
+    }
+  }
+
+  /**
+   * Sci-fi UFO hovering theremin vibrato
+   */
+  public playUfoHum(): void {
+    if (!this.ctx || !this.masterGain) return;
+    try {
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(580, now);
+      osc.frequency.linearRampToValueAtTime(720, now + 0.3);
+      osc.frequency.linearRampToValueAtTime(520, now + 0.6);
+
+      gain.gain.setValueAtTime(0.22, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.65);
+
+      osc.connect(gain);
+      gain.connect(this.masterGain);
+
+      osc.start(now);
+      osc.stop(now + 0.7);
+    } catch {
+      // Ignore
+    }
+  }
+
+  /**
    * Cheerful background countryside arpeggio loop
    */
   public startBgm(): void {

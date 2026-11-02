@@ -34,6 +34,36 @@ export class VehiclePhysics {
   public propeller: THREE.Object3D | null = null;
   public smokeEmitter: THREE.Object3D | null = null;
 
+  // Interactive Power-Ups & Booster State
+  public powerUpActive: 'giant' | 'rainbow' | 'coins' | null = null;
+  public powerUpEndTime = 0;
+  public currentScale = 1.0;
+  public turboTrailActive = false;
+  public turboTrailEndTime = 0;
+
+  public triggerTurboBoost(boostSpeed = 24.0, duration = 2.5): void {
+    this.temporaryBoost = Math.max(this.temporaryBoost, boostSpeed);
+    this.turboTrailActive = true;
+    this.turboTrailEndTime = performance.now() + duration * 1000;
+  }
+
+  public triggerSuperBounce(bounceVelocity = 22.0): void {
+    if (!this.isAirVehicle) {
+      this.verticalSpeed = bounceVelocity;
+      this.isGrounded = false;
+    } else {
+      this.targetAltitude = Math.min(32.0, this.targetAltitude + 12.0);
+    }
+  }
+
+  public triggerPowerUp(powerUp: 'giant' | 'rainbow' | 'coins', durationSeconds = 7.0): void {
+    this.powerUpActive = powerUp;
+    this.powerUpEndTime = performance.now() + durationSeconds * 1000;
+    if (powerUp === 'rainbow') {
+      this.triggerTurboBoost(18.0, durationSeconds);
+    }
+  }
+
   public reset(spawnPos = new THREE.Vector3(0, 0, 0)): void {
     this.position.copy(spawnPos);
     this.velocity.set(0, 0, 0);
@@ -45,6 +75,10 @@ export class VehiclePhysics {
     this.targetYaw = 0;
     this.currentYaw = 0;
     this.temporaryBoost = 0;
+    this.powerUpActive = null;
+    this.powerUpEndTime = 0;
+    this.currentScale = 1.0;
+    this.turboTrailActive = false;
     this.altitude = this.isAirVehicle ? 14.0 : 0;
     this.targetAltitude = this.altitude;
     this.pitchAngle = 0;
@@ -271,6 +305,20 @@ export class VehiclePhysics {
         rootGroup.rotation.z = THREE.MathUtils.damp(rootGroup.rotation.z, turnRoll, 10.0, delta);
       }
     }
+
+    // Power-up duration check & dynamic model scaling
+    const now = performance.now();
+    if (this.powerUpActive && now > this.powerUpEndTime) {
+      this.powerUpActive = null;
+    }
+    if (this.turboTrailActive && now > this.turboTrailEndTime) {
+      this.turboTrailActive = false;
+    }
+
+    // Dynamic scale (Mega Giant power-up grows 2.2x!)
+    const targetScale = this.powerUpActive === 'giant' ? 2.2 : 1.0;
+    this.currentScale = THREE.MathUtils.damp(this.currentScale, targetScale, 6.0, delta);
+    rootGroup.scale.setScalar(this.currentScale);
 
     // Apply main transforms
     rootGroup.position.copy(this.position);

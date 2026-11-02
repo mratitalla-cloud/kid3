@@ -6,16 +6,38 @@
 import * as THREE from 'three';
 import { CollisionSeverity } from '../types/game';
 
+export type InteractiveObjectType =
+  | 'barn'
+  | 'windmill'
+  | 'fence'
+  | 'hay'
+  | 'tree'
+  | 'cow'
+  | 'chicken'
+  | 'star_ring'
+  | 'rainbow_cloud'
+  | 'balloon'
+  | 'candy'
+  | 'dino'
+  | 'crystal'
+  | 'portal'
+  | 'boost_pad'
+  | 'jump_pad'
+  | 'coin'
+  | 'mystery_box'
+  | 'creature';
+
 export interface CollidableRegisterFn {
   (
     id: string,
-    type: 'barn' | 'windmill' | 'fence' | 'hay' | 'tree' | 'cow' | 'star_ring' | 'rainbow_cloud' | 'balloon' | 'candy' | 'dino' | 'crystal' | 'portal',
+    type: InteractiveObjectType,
     pos: THREE.Vector3,
     radius: number,
     mesh: THREE.Object3D,
     severity: CollisionSeverity,
     isAirObject: boolean,
-    portalTargetWorldId?: string
+    portalTargetWorldId?: string,
+    extraData?: { noteIndex?: number; powerUp?: string; sound?: string }
   ): void;
 }
 
@@ -29,6 +51,8 @@ export interface WorldDefinition {
   roadColor: number;
   ambientLightColor: number;
   sunLightColor: number;
+  particleType?: 'blossoms' | 'sprinkles' | 'embers' | 'stars';
+  particleColor?: number;
   spawnChunkObjects: (
     chunk: THREE.Group,
     cx: number,
@@ -41,4 +65,5 @@ export interface WorldDefinition {
     registerCollidable: CollidableRegisterFn,
     availableWorldIds: string[]
   ) => void;
+  tickChunk?: (chunk: THREE.Group, delta: number, elapsed: number, carPos: THREE.Vector3) => void;
 }

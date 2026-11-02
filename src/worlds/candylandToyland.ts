@@ -7,29 +7,37 @@ import * as THREE from 'three';
 import { WorldDefinition } from './types';
 
 // Materials for Candyland
-const frostingGroundMat = new THREE.MeshStandardMaterial({ color: 0xa7f3d0, roughness: 0.7 });
-const cookieRoadMat = new THREE.MeshStandardMaterial({ color: 0xfde047, roughness: 0.8 });
-const gingerbreadMat = new THREE.MeshStandardMaterial({ color: 0x92400e, roughness: 0.6 });
-const icingWhiteMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.2 });
-const candyCaneRedMat = new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.3 });
-const candyCaneWhiteMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.3 });
-const marshmallowMat = new THREE.MeshStandardMaterial({ color: 0xfbcfe8, roughness: 0.5 });
-const lollipopPinkMat = new THREE.MeshStandardMaterial({ color: 0xec4899, roughness: 0.2, metalness: 0.2 });
-const gumdropGreenMat = new THREE.MeshStandardMaterial({ color: 0x10b981, roughness: 0.2, transparent: true, opacity: 0.85 });
-const chocolateMat = new THREE.MeshStandardMaterial({ color: 0x451a03, roughness: 0.4 });
-const portalRingMat = new THREE.MeshStandardMaterial({ color: 0xec4899, emissive: 0xf472b6, emissiveIntensity: 0.9, roughness: 0.2 });
-const portalVortexMat = new THREE.MeshStandardMaterial({ color: 0xa855f7, emissive: 0xc084fc, emissiveIntensity: 0.8, transparent: true, opacity: 0.75 });
+const frostingGroundMat = new THREE.MeshStandardMaterial({ color: 0xfbcfe8, roughness: 0.6 }); // Frosted sugar meadow
+const waferRoadMat = new THREE.MeshStandardMaterial({ color: 0xfef08a, roughness: 0.75 }); // Golden wafer biscuit road
+const gingerbreadMat = new THREE.MeshStandardMaterial({ color: 0x854d0e, roughness: 0.65 });
+const royalIcingWhiteMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.2 });
+const candyCaneRedMat = new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.25 });
+const candyCaneWhiteMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.25 });
+const marshmallowPinkMat = new THREE.MeshStandardMaterial({ color: 0xf472b6, roughness: 0.5 });
+const marshmallowCyanMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.5 });
+const jellyGreenMat = new THREE.MeshStandardMaterial({ color: 0x10b981, roughness: 0.1, transparent: true, opacity: 0.85 });
+const jellyPinkMat = new THREE.MeshStandardMaterial({ color: 0xf43f5e, emissive: 0xe11d48, emissiveIntensity: 0.4, roughness: 0.1, transparent: true, opacity: 0.88 });
+const chocolateDarkMat = new THREE.MeshStandardMaterial({ color: 0x451a03, roughness: 0.35 });
+const lollipopYellowMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.2, metalness: 0.3 });
+const lollipopPurpleMat = new THREE.MeshStandardMaterial({ color: 0xa855f7, roughness: 0.2, metalness: 0.3 });
+const sugarCoinMat = new THREE.MeshStandardMaterial({ color: 0xfbbf24, emissive: 0xf59e0b, emissiveIntensity: 0.9, metalness: 0.8, roughness: 0.2 });
+const boostRainbowMat = new THREE.MeshStandardMaterial({ color: 0xec4899, emissive: 0xdb2777, emissiveIntensity: 1.0, roughness: 0.2 });
+const mysteryCandyBoxMat = new THREE.MeshStandardMaterial({ color: 0x06b6d4, emissive: 0x0891b2, emissiveIntensity: 0.85, roughness: 0.2 });
+const portalRingMat = new THREE.MeshStandardMaterial({ color: 0xec4899, emissive: 0xf472b6, emissiveIntensity: 0.95, roughness: 0.2 });
+const portalVortexMat = new THREE.MeshStandardMaterial({ color: 0xa855f7, emissive: 0xc084fc, emissiveIntensity: 0.85, transparent: true, opacity: 0.85 });
 
 export const candylandToylandWorld: WorldDefinition = {
   id: 'candyland_toyland',
   name: 'Candyland & Toyland',
-  subtitle: 'Gingerbread Cottages, Candy Canes & Lollipop Forests',
+  subtitle: 'Jelly Trampolines, Peppermint Pinwheels, Gummy Bears & Donut Loops',
   skyColor: 0xf472b6,
   fogColor: 0xfce7f3,
-  groundColor: 0xa7f3d0,
-  roadColor: 0xfde047,
+  groundColor: 0xfbcfe8,
+  roadColor: 0xfef08a,
   ambientLightColor: 0xfff1f2,
   sunLightColor: 0xfef08a,
+  particleType: 'sprinkles',
+  particleColor: 0xec4899,
 
   spawnChunkObjects: (
     chunk,
@@ -43,182 +51,342 @@ export const candylandToylandWorld: WorldDefinition = {
     registerCollidable,
     availableWorldIds
   ) => {
-    // 1. Giant Gingerbread Cottage
-    if (rand(1) > 0.4) {
-      const gX = rand(2) > 0.5 ? 14 : chunkSize - 14;
-      const gZ = 15 + rand(3) * (chunkSize - 30);
-
-      const cottage = new THREE.Group();
-      // Gingerbread Walls
-      const walls = new THREE.Mesh(new THREE.BoxGeometry(6.5, 4.2, 5.5), gingerbreadMat);
-      walls.position.set(0, 2.1, 0);
-      walls.castShadow = true;
-      cottage.add(walls);
-
-      // White Icing Roof
-      const roof = new THREE.Mesh(new THREE.ConeGeometry(5.0, 3.2, 4), icingWhiteMat);
-      roof.rotation.y = Math.PI / 4;
-      roof.position.set(0, 5.4, 0);
-      cottage.add(roof);
-
-      // Gumdrop chimney
-      const chimney = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 1.8, 12), candyCaneRedMat);
-      chimney.position.set(1.8, 5.5, 0);
-      cottage.add(chimney);
-
-      cottage.position.set(gX, 0, gZ);
-      chunk.add(cottage);
-
-      registerCollidable(
-        `candy_cottage_${cx}_${cz}`,
-        'candy',
-        new THREE.Vector3(originX + gX, 0, originZ + gZ),
-        5.2,
-        cottage,
-        'major',
-        false
-      );
-    }
-
-    // 2. Striped Candy Canes
-    const numCanes = Math.floor(4 * density);
-    for (let i = 0; i < numCanes; i++) {
-      const cX = 6 + rand(10 + i) * (chunkSize - 12);
-      if (Math.abs(cX - chunkSize / 2) > 6) {
-        const cZ = 6 + rand(20 + i) * (chunkSize - 12);
-
-        const caneGroup = new THREE.Group();
-        const post = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 4.5, 12), candyCaneRedMat);
-        post.position.set(0, 2.25, 0);
-        post.castShadow = true;
-
-        const crook = new THREE.Mesh(new THREE.TorusGeometry(0.8, 0.35, 8, 16, Math.PI), candyCaneWhiteMat);
-        crook.position.set(0.8, 4.5, 0);
-        crook.rotation.z = -Math.PI / 2;
-        caneGroup.add(post, crook);
-
-        caneGroup.position.set(cX, 0, cZ);
-        chunk.add(caneGroup);
+    // 1. CANDY CANE ROAD BORDERS
+    // Striped candy cane safety bumpers on both sides of the biscuit road
+    const caneStep = 7;
+    for (let z = 3; z < chunkSize - 3; z += caneStep) {
+      [-4.6, 4.6].forEach((xOff) => {
+        const cane = new THREE.Group();
+        const seg1 = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.7, 8), candyCaneRedMat);
+        seg1.position.y = 0.35;
+        const seg2 = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.7, 8), candyCaneWhiteMat);
+        seg2.position.y = 1.05;
+        const cap = new THREE.Mesh(new THREE.SphereGeometry(0.25, 8, 8), candyCaneRedMat);
+        cap.position.y = 1.45;
+        cane.add(seg1, seg2, cap);
+        cane.position.set(chunkSize / 2 + xOff, 0, z);
+        chunk.add(cane);
 
         registerCollidable(
-          `candy_cane_${cx}_${cz}_${i}`,
+          `cane_${cx}_${cz}_${xOff}_${z}`,
           'candy',
-          new THREE.Vector3(originX + cX, 0, originZ + cZ),
-          2.0,
-          caneGroup,
-          'minor',
-          false
-        );
-      }
-    }
-
-    // 3. Marshmallow Trees & Lollipop Flowers
-    const numTrees = Math.floor(6 * density);
-    for (let i = 0; i < numTrees; i++) {
-      const tX = 5 + rand(30 + i) * (chunkSize - 10);
-      if (Math.abs(tX - chunkSize / 2) > 7) {
-        const tZ = 5 + rand(40 + i) * (chunkSize - 10);
-        const lollyGroup = new THREE.Group();
-
-        // Candy stick
-        const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 3.2, 8), icingWhiteMat);
-        stick.position.set(0, 1.6, 0);
-        stick.castShadow = true;
-
-        // Lollipop disc or Marshmallow puff
-        const isMallow = rand(45 + i) > 0.5;
-        if (isMallow) {
-          const puff = new THREE.Mesh(new THREE.CylinderGeometry(1.4, 1.4, 1.2, 16), marshmallowMat);
-          puff.position.set(0, 3.4, 0);
-          puff.castShadow = true;
-          lollyGroup.add(stick, puff);
-        } else {
-          const disc = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.5, 0.3, 16), lollipopPinkMat);
-          disc.rotation.x = Math.PI / 2;
-          disc.position.set(0, 3.5, 0);
-          disc.castShadow = true;
-          lollyGroup.add(stick, disc);
-        }
-
-        lollyGroup.position.set(tX, 0, tZ);
-        chunk.add(lollyGroup);
-
-        registerCollidable(
-          `lolly_${cx}_${cz}_${i}`,
-          'candy',
-          new THREE.Vector3(originX + tX, 0, originZ + tZ),
-          2.2,
-          lollyGroup,
-          'minor',
-          false
-        );
-      }
-    }
-
-    // 4. Chocolate Bar Fences along road
-    const fenceStep = 10;
-    for (let fz = 5; fz < chunkSize - 5; fz += fenceStep) {
-      [-5.5, 5.5].forEach((offsetSide, sideIdx) => {
-        const choc = new THREE.Mesh(new THREE.BoxGeometry(0.4, 1.1, 7.5), chocolateMat);
-        const fx = chunkSize / 2 + offsetSide;
-        choc.position.set(fx, 0.55, fz);
-        choc.castShadow = true;
-        chunk.add(choc);
-
-        registerCollidable(
-          `choc_fence_${sideIdx}_${cx}_${cz}_${fz}`,
-          'fence',
-          new THREE.Vector3(originX + fx, 0, originZ + fz),
-          2.0,
-          choc,
+          new THREE.Vector3(originX + chunkSize / 2 + xOff, 0.7, originZ + z),
+          1.2,
+          cane,
           'minor',
           false
         );
       });
     }
 
-    // 5. AIR OBJECTS: Flying Sugar Doughnut Hoops!
-    for (let r = 0; r < 2; r++) {
-      const ringX = 8 + rand(60 + r) * (chunkSize - 16);
-      const ringZ = 8 + rand(70 + r) * (chunkSize - 16);
-      const ringY = 12 + rand(80 + r) * 14;
+    // 2. GIANT BOUNCY JELLY PUDDING TRAMPOLINE!
+    // Translucent glowing wobbly pudding on the road that bounces the car 22m high
+    if (rand(1) > 0.35) {
+      const jelloZ = 12 + rand(2) * (chunkSize - 24);
+      const jelloGroup = new THREE.Group();
+      jelloGroup.name = 'jelly_trampoline';
 
-      const donut = new THREE.Mesh(
-        new THREE.TorusGeometry(2.5, 0.65, 12, 24),
-        new THREE.MeshStandardMaterial({ color: 0xfbbf24, roughness: 0.5 })
+      // Fluted gelatin mold geometry
+      const jelloMesh = new THREE.Mesh(
+        new THREE.CylinderGeometry(2.2, 2.8, 1.4, 16),
+        jellyPinkMat
       );
-      const icing = new THREE.Mesh(
-        new THREE.TorusGeometry(2.5, 0.7, 12, 24),
-        lollipopPinkMat
+      jelloMesh.position.y = 0.7;
+      jelloMesh.castShadow = true;
+
+      // Glossy red cherry on top
+      const cherry = new THREE.Mesh(new THREE.SphereGeometry(0.5, 12, 12), candyCaneRedMat);
+      cherry.position.set(0, 1.6, 0);
+
+      // Cherry stem
+      const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.8, 4), chocolateDarkMat);
+      stem.position.set(0.15, 2.0, 0);
+      stem.rotation.z = -0.4;
+
+      jelloGroup.add(jelloMesh, cherry, stem);
+      jelloGroup.position.set(chunkSize / 2, 0, jelloZ);
+      chunk.add(jelloGroup);
+
+      registerCollidable(
+        `jelly_${cx}_${cz}`,
+        'jump_pad',
+        new THREE.Vector3(originX + chunkSize / 2, 1.0, originZ + jelloZ),
+        2.8,
+        jelloGroup,
+        'minor',
+        false
       );
-      icing.scale.set(1.02, 1.02, 1.02);
+    }
+
+    // 3. TURBO RAINBOW SUGAR BOOST PAD
+    if (rand(10) > 0.4) {
+      const boostZ = 8 + rand(11) * (chunkSize - 16);
+      const boostGroup = new THREE.Group();
+
+      const base = new THREE.Mesh(new THREE.BoxGeometry(5.0, 0.08, 3.6), chocolateDarkMat);
+      base.position.y = 0.04;
+
+      // Glowing pink/cyan chevrons
+      const arrowGeo = new THREE.ConeGeometry(0.7, 1.2, 3);
+      arrowGeo.rotateX(Math.PI / 2);
+      [-0.8, 0, 0.8].forEach((zOff) => {
+        const arrow = new THREE.Mesh(arrowGeo, boostRainbowMat);
+        arrow.position.set(0, 0.1, zOff);
+        boostGroup.add(arrow);
+      });
+
+      boostGroup.add(base);
+      boostGroup.position.set(chunkSize / 2, 0, boostZ);
+      chunk.add(boostGroup);
+
+      registerCollidable(
+        `candy_boost_${cx}_${cz}`,
+        'boost_pad',
+        new THREE.Vector3(originX + chunkSize / 2, 0.2, originZ + boostZ),
+        2.8,
+        boostGroup,
+        'minor',
+        false
+      );
+    }
+
+    // 4. GIANT GINGERBREAD CASTLE WITH DRIVE-THROUGH ARCHWAY
+    if (cz % 3 === 0 && rand(20) > 0.35) {
+      const castleZ = chunkSize / 2;
+      const castle = new THREE.Group();
+
+      // Left tower
+      const towerL = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 2.0, 8.0, 8), gingerbreadMat);
+      towerL.position.set(-6.0, 4.0, 0);
+      const roofL = new THREE.Mesh(new THREE.ConeGeometry(2.4, 3.0, 8), royalIcingWhiteMat);
+      roofL.position.set(-6.0, 9.5, 0);
+
+      // Right tower
+      const towerR = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 2.0, 8.0, 8), gingerbreadMat);
+      towerR.position.set(6.0, 4.0, 0);
+      const roofR = new THREE.Mesh(new THREE.ConeGeometry(2.4, 3.0, 8), royalIcingWhiteMat);
+      roofR.position.set(6.0, 9.5, 0);
+
+      // Spanning castle bridge arch over the road
+      const arch = new THREE.Mesh(new THREE.BoxGeometry(10.0, 2.5, 3.0), gingerbreadMat);
+      arch.position.set(0, 7.0, 0);
+
+      // White frosting icicles
+      const icing = new THREE.Mesh(new THREE.BoxGeometry(10.2, 0.6, 3.2), royalIcingWhiteMat);
+      icing.position.set(0, 8.4, 0);
+
+      castle.add(towerL, roofL, towerR, roofR, arch, icing);
+      castle.position.set(chunkSize / 2, 0, castleZ);
+      chunk.add(castle);
+
+      registerCollidable(
+        `castle_left_${cx}_${cz}`,
+        'candy',
+        new THREE.Vector3(originX + chunkSize / 2 - 6.0, 4.0, originZ + castleZ),
+        2.6,
+        towerL,
+        'major',
+        false
+      );
+      registerCollidable(
+        `castle_right_${cx}_${cz}`,
+        'candy',
+        new THREE.Vector3(originX + chunkSize / 2 + 6.0, 4.0, originZ + castleZ),
+        2.6,
+        towerR,
+        'major',
+        false
+      );
+    }
+
+    // 5. SPINNING PEPPERMINT PINWHEELS
+    // Giant candy pinwheels that spin rapidly in the wind
+    if (rand(30) > 0.5) {
+      const pinX = rand(31) > 0.5 ? 16 : chunkSize - 16;
+      const pinZ = 12 + rand(32) * (chunkSize - 24);
+
+      const pinGroup = new THREE.Group();
+      const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.25, 6.0, 8), royalIcingWhiteMat);
+      stick.position.y = 3.0;
+
+      const wheel = new THREE.Group();
+      wheel.name = 'peppermint_wheel';
+      wheel.position.set(0, 5.8, 0.3);
+
+      const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.3, 12), candyCaneRedMat);
+      hub.rotation.x = Math.PI / 2;
+      wheel.add(hub);
+
+      for (let p = 0; p < 6; p++) {
+        const blade = new THREE.Mesh(
+          new THREE.ConeGeometry(0.8, 2.5, 4),
+          p % 2 === 0 ? candyCaneRedMat : candyCaneWhiteMat
+        );
+        blade.position.y = 1.3;
+        const pivot = new THREE.Group();
+        pivot.rotation.z = (p * Math.PI) / 3;
+        pivot.add(blade);
+        wheel.add(pivot);
+      }
+
+      pinGroup.add(stick, wheel);
+      pinGroup.position.set(pinX, 0, pinZ);
+      chunk.add(pinGroup);
+
+      registerCollidable(
+        `pinwheel_${cx}_${cz}`,
+        'candy',
+        new THREE.Vector3(originX + pinX, 3.0, originZ + pinZ),
+        3.2,
+        pinGroup,
+        'minor',
+        false
+      );
+    }
+
+    // 6. DANCING WOBBLY GUMMY BEARS!
+    // Giant translucent jelly bears on the roadside that wobble
+    if (rand(40) > 0.4) {
+      const bearX = rand(41) > 0.5 ? 10 : chunkSize - 10;
+      const bearZ = 14 + rand(42) * (chunkSize - 28);
+
+      const bearGroup = new THREE.Group();
+      bearGroup.name = 'gummy_bear';
+
+      // Bear body
+      const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.9, 1.2, 8, 8), jellyGreenMat);
+      body.position.y = 1.5;
+      body.castShadow = true;
+
+      // Bear head
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.7, 8, 8), jellyGreenMat);
+      head.position.set(0, 2.6, 0);
+
+      // Ears
+      const earL = new THREE.Mesh(new THREE.SphereGeometry(0.25, 6, 6), jellyGreenMat);
+      earL.position.set(-0.55, 3.2, 0);
+      const earR = new THREE.Mesh(new THREE.SphereGeometry(0.25, 6, 6), jellyGreenMat);
+      earR.position.set(0.55, 3.2, 0);
+
+      // Snout
+      const snout = new THREE.Mesh(new THREE.SphereGeometry(0.3, 6, 6), royalIcingWhiteMat);
+      snout.position.set(0, 2.5, 0.6);
+
+      bearGroup.add(body, head, earL, earR, snout);
+      bearGroup.position.set(bearX, 0, bearZ);
+      chunk.add(bearGroup);
+
+      registerCollidable(
+        `gummy_bear_${cx}_${cz}`,
+        'creature',
+        new THREE.Vector3(originX + bearX, 1.5, originZ + bearZ),
+        2.2,
+        bearGroup,
+        'minor',
+        false,
+        undefined,
+        { sound: 'squish' }
+      );
+    }
+
+    // 7. MUSICAL GUMMY MELODY COINS (Chains along the wafer path)
+    if (rand(50) > 0.3) {
+      const startZ = 10 + rand(51) * (chunkSize - 35);
+      const offset = (rand(52) - 0.5) * 2.5;
+
+      for (let c = 0; c < 4; c++) {
+        const coinZ = startZ + c * 4.5;
+        const coinGeo = new THREE.CylinderGeometry(0.55, 0.55, 0.14, 16);
+        coinGeo.rotateZ(Math.PI / 2);
+        const coin = new THREE.Mesh(coinGeo, sugarCoinMat);
+        coin.position.set(chunkSize / 2 + offset, 0.9, coinZ);
+        chunk.add(coin);
+
+        registerCollidable(
+          `candy_coin_${cx}_${cz}_${c}`,
+          'coin',
+          new THREE.Vector3(originX + chunkSize / 2 + offset, 0.9, originZ + coinZ),
+          1.4,
+          coin,
+          'minor',
+          false,
+          undefined,
+          { noteIndex: (cz * 4 + c) % 8 }
+        );
+      }
+    }
+
+    // 8. SURPRISE CANDY MYSTERY BOX
+    if (rand(60) > 0.5) {
+      const boxX = chunkSize / 2 + (rand(61) > 0.5 ? 2.0 : -2.0);
+      const boxZ = 15 + rand(62) * (chunkSize - 30);
+
+      const boxGroup = new THREE.Group();
+      const cube = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.2, 1.2), mysteryCandyBoxMat);
+      cube.position.y = 1.0;
+      cube.castShadow = true;
+
+      const ribbon = new THREE.Mesh(
+        new THREE.BoxGeometry(1.24, 0.3, 1.24),
+        royalIcingWhiteMat
+      );
+      ribbon.position.y = 1.0;
+      boxGroup.add(cube, ribbon);
+
+      boxGroup.position.set(boxX, 0, boxZ);
+      chunk.add(boxGroup);
+
+      registerCollidable(
+        `candy_mystery_${cx}_${cz}`,
+        'mystery_box',
+        new THREE.Vector3(originX + boxX, 1.0, originZ + boxZ),
+        1.8,
+        boxGroup,
+        'minor',
+        false
+      );
+    }
+
+    // 9. RAINBOW SUGAR DONUT HOOPS IN THE AIR
+    // Huge floating sugar donuts to fly/jump through
+    for (let r = 0; r < 2; r++) {
+      const donutX = 8 + rand(70 + r) * (chunkSize - 16);
+      const donutZ = 8 + rand(75 + r) * (chunkSize - 16);
+      const donutY = 12 + rand(80 + r) * 14;
 
       const donutGroup = new THREE.Group();
-      donutGroup.add(donut, icing);
-      donutGroup.position.set(ringX, ringY, ringZ);
+      donutGroup.name = 'donut_hoop';
+
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(3.0, 0.65, 12, 24), waferRoadMat);
+      const glaze = new THREE.Mesh(new THREE.TorusGeometry(3.0, 0.68, 12, 24), marshmallowPinkMat);
+      glaze.scale.set(1.01, 1.01, 1.01);
+      donutGroup.add(ring, glaze);
+
+      donutGroup.position.set(donutX, donutY, donutZ);
       chunk.add(donutGroup);
 
       registerCollidable(
         `donut_ring_${cx}_${cz}_${r}`,
         'star_ring',
-        new THREE.Vector3(originX + ringX, ringY, originZ + ringZ),
-        3.2,
+        new THREE.Vector3(originX + donutX, donutY, originZ + donutZ),
+        3.8,
         donutGroup,
         'minor',
         true
       );
     }
 
-    // 6. RANDOM PORTAL TO ANOTHER WORLD!
-    if (rand(95) > 0.75 && availableWorldIds.length > 1) {
+    // 10. PROCEDURAL STARGATE WARP PORTAL
+    if (rand(90) > 0.75 && availableWorldIds.length > 1) {
       const otherWorlds = availableWorldIds.filter((w) => w !== 'candyland_toyland');
-      const targetWorldId = otherWorlds[Math.floor(rand(96) * otherWorlds.length)];
+      const targetWorldId = otherWorlds[Math.floor(rand(91) * otherWorlds.length)];
 
-      const portalX = chunkSize / 2 + (rand(97) > 0.5 ? 9.5 : -9.5);
-      const portalZ = 15 + rand(98) * (chunkSize - 30);
+      const portalX = chunkSize / 2 + (rand(92) > 0.5 ? 9.5 : -9.5);
+      const portalZ = 15 + rand(93) * (chunkSize - 30);
 
       const portalGroup = new THREE.Group();
-      const outerArch = new THREE.Mesh(new THREE.TorusGeometry(3.2, 0.45, 16, 32), portalRingMat);
+      portalGroup.name = 'candy_portal';
+      const outerArch = new THREE.Mesh(new THREE.TorusGeometry(3.2, 0.55, 16, 32), portalRingMat);
       outerArch.position.y = 3.2;
       const vortex = new THREE.Mesh(new THREE.CircleGeometry(2.7, 32), portalVortexMat);
       vortex.position.y = 3.2;
@@ -237,6 +405,35 @@ export const candylandToylandWorld: WorldDefinition = {
         false,
         targetWorldId
       );
+    }
+  },
+
+  // Interactive chunk animation tick
+  tickChunk: (chunk, delta, elapsed, carPos) => {
+    // 1. Spin peppermint pinwheels
+    const pinwheel = chunk.getObjectByName('peppermint_wheel');
+    if (pinwheel) {
+      pinwheel.rotation.z += delta * 3.5;
+    }
+
+    // 2. Wobble jelly trampolines
+    const jello = chunk.getObjectByName('jelly_trampoline');
+    if (jello) {
+      const wobble = 1.0 + Math.sin(elapsed * 6) * 0.08;
+      jello.scale.set(wobble, 2.0 - wobble, wobble);
+    }
+
+    // 3. Wobbly dancing gummy bears
+    const bear = chunk.getObjectByName('gummy_bear');
+    if (bear) {
+      bear.rotation.z = Math.sin(elapsed * 4) * 0.15;
+      bear.position.y = Math.abs(Math.sin(elapsed * 4)) * 0.3;
+    }
+
+    // 4. Spin donut air hoops
+    const donut = chunk.getObjectByName('donut_hoop');
+    if (donut) {
+      donut.rotation.y += delta * 0.9;
     }
   },
 };
