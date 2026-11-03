@@ -87,6 +87,18 @@ export class VehiclePhysics {
     this.rollAngle = 0;
   }
 
+  public roofHeight = 2.2; // Resting roof clearance when flipped upside down
+
+  public setVehicleModel(vehicleId: string): void {
+    if (vehicleId === 'steam_train') {
+      this.roofHeight = 3.3;
+    } else if (vehicleId === 'digger') {
+      this.roofHeight = 2.9;
+    } else {
+      this.roofHeight = 2.2;
+    }
+  }
+
   public setVehicleType(type: 'ground' | 'air'): void {
     const wasAir = this.isAirVehicle;
     this.isAirVehicle = type === 'air';
@@ -335,9 +347,9 @@ export class VehiclePhysics {
       if (this.isFlipped) {
         // Roll completely upside down (180 deg / Math.PI) on its roof, and stop!
         rootGroup.rotation.z = THREE.MathUtils.damp(rootGroup.rotation.z, Math.PI, 12.0, delta);
-        this.speed = 0;
-        // Lift car by roof height (1.45m) so the roof rests exactly on the floor with ZERO clipping!
-        this.position.y = THREE.MathUtils.damp(this.position.y, 1.45, 14.0, delta);
+        // Lift car by full roof height (2.2m - 3.3m) so roof rests strictly on top of ground with 0 clipping!
+        const restY = Math.max(2.2, this.roofHeight);
+        this.position.y = THREE.MathUtils.damp(this.position.y, restY, 14.0, delta);
       } else {
         if (!this.isGrounded) {
           this.verticalSpeed -= 28.0 * delta; // Realistic toy gravity

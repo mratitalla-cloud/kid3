@@ -116,6 +116,7 @@ export const DesktopHost: React.FC = () => {
     physicsRef.current.propeller = bundle.propeller || null;
     physicsRef.current.smokeEmitter = bundle.smokeEmitter || null;
     physicsRef.current.setVehicleType(target.type);
+    physicsRef.current.setVehicleModel(target.id);
   }, [vehicles]);
 
   // World Switching & Portal Warp

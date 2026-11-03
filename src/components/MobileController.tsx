@@ -53,6 +53,7 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
   const [parentSettings, setParentSettings] = useState<ParentSettings>(DEFAULT_PARENT_SETTINGS);
   const [isParentPanelOpen, setIsParentPanelOpen] = useState(false);
   const [lockProgress, setLockProgress] = useState(0);
+  const [showToddlerLockGuide, setShowToddlerLockGuide] = useState(false);
   const lockTimerRef = useRef<number | null>(null);
   const lockStartTimeRef = useRef<number>(0);
 
@@ -386,27 +387,30 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
     await requestWakeLock();
   };
 
-  // Tap-to-Start Permission Handshake & Fullscreen YouTube-style Lock
-  const handleTapToStart = async () => {
-    // 1. Immediately and synchronously invoke Fullscreen API on the direct user gesture
-    // (Must happen synchronously before any await or promise resolution)
+  // Exact Fullscreen API helper requested
+  const openFullscreen = () => {
+    const elem = document.documentElement as any;
     try {
-      const docEl = document.documentElement as any;
-      if (docEl.requestFullscreen) {
-        docEl.requestFullscreen({ navigationUI: 'hide' }).catch(() => {});
-      } else if (docEl.webkitRequestFullscreen) {
-        docEl.webkitRequestFullscreen();
-      } else if (docEl.mozRequestFullScreen) {
-        docEl.mozRequestFullScreen();
-      } else if (docEl.msRequestFullscreen) {
-        docEl.msRequestFullscreen();
+      if (elem.requestFullscreen) {
+        elem.requestFullscreen({ navigationUI: 'hide' }).catch(() => {});
+      } else if (elem.webkitRequestFullscreen) {
+        elem.webkitRequestFullscreen();
+      } else if (elem.mozRequestFullScreen) {
+        elem.mozRequestFullScreen();
+      } else if (elem.msRequestFullscreen) {
+        elem.msRequestFullscreen();
       }
     } catch {
       // Ignore
     }
-
-    // Scroll 1px to collapse mobile browser search bar & navigation toolbars
+    // Safari / Chrome 1px scroll to collapse browser bars
     window.scrollTo(0, 1);
+  };
+
+  // Tap-to-Start Permission Handshake & Fullscreen YouTube-style Lock
+  const handleTapToStart = async () => {
+    // 1. Immediately and synchronously invoke Fullscreen API on direct user gesture
+    openFullscreen();
 
     // 2. Synchronously unlock Web Audio on direct user tap
     mobileAudio.unlockSynchronously();
@@ -550,9 +554,9 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
       vGroup.rotation.x = s.pitch || 0;
       vGroup.rotation.z = s.roll || (s.isFlipped ? Math.PI : 0);
 
-      // Floor clipping fix: when car is upside down on roof, ensure it sits at roof height (1.45m)
-      if (s.isFlipped && vGroup.position.y < 1.45) {
-        vGroup.position.y = 1.45;
+      // Floor clipping fix: when car is upside down on roof, ensure it sits at roof height (minimum 2.2m)
+      if (s.isFlipped && vGroup.position.y < 2.2) {
+        vGroup.position.y = 2.2;
       }
 
       // Forward heading vector in 3D:
@@ -713,20 +717,39 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
         </div>
 
         <div className="w-full max-w-xs space-y-3">
-          <div className="py-6 px-6 bg-white text-slate-900 rounded-3xl shadow-2xl flex flex-col items-center text-center transform active:scale-95 transition-transform">
+          {/* Main Direct Fullscreen Trigger Button with id="fullscreen-btn" */}
+          <button
+            id="fullscreen-btn"
+            onClick={handleTapToStart}
+            className="w-full py-6 px-6 bg-white text-slate-900 rounded-3xl shadow-2xl flex flex-col items-center text-center transform active:scale-95 transition-transform border-4 border-amber-300"
+          >
             <div className="w-14 h-14 bg-rose-600 rounded-2xl flex items-center justify-center text-white shadow-lg mb-2 shadow-rose-500/40">
               <Maximize2 className="w-8 h-8 animate-pulse" />
             </div>
             <span className="text-2xl font-black tracking-wide text-rose-600">
-              PLAY IN FULL SCREEN
+              PLAY FULLSCREEN 🎮
             </span>
             <span className="text-xs text-slate-500 mt-1 max-w-[220px]">
-              Locks browser bars & back buttons like YouTube so toddlers stay inside the game
+              Tap to enter Fullscreen & lock steering motion controls
             </span>
-          </div>
+          </button>
+
+          {/* 3-Year-Old Proof Lock (Video Player Secret) Guide Button */}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowToddlerLockGuide(true);
+            }}
+            className="w-full py-3 px-4 bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs rounded-2xl flex items-center justify-center gap-2 shadow-xl transition-all active:scale-95"
+          >
+            <Lock className="w-4 h-4 text-slate-900" />
+            <span>🔒 3-Year-Old Proof Lock (Secret Guide)</span>
+          </button>
 
           {/* Test Sound & Buzz button before driving */}
           <button
+            type="button"
             onClick={handleTestAudioAndVibrate}
             className="w-full py-2.5 px-4 bg-white/20 hover:bg-white/30 backdrop-blur-md border border-white/40 rounded-2xl flex items-center justify-center gap-2 text-white font-bold text-xs shadow-lg transition-all active:scale-95"
           >
@@ -739,6 +762,72 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
             💡 iPhone tip: Tap Share ⎋ → &quot;Add to Home Screen&quot; for zero browser bars!
           </div>
         </div>
+
+        {/* Toddler-Proof Lock Guide Modal (Guided Access & App Pinning) */}
+        {showToddlerLockGuide && (
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4 text-white"
+          >
+            <div className="bg-slate-900 border border-white/20 rounded-3xl max-w-sm w-full p-5 space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between border-b border-white/10 pb-3">
+                <div className="flex items-center gap-2">
+                  <div className="p-2 bg-amber-500/20 text-amber-300 rounded-xl">
+                    <Lock className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black">Toddler-Proof Lock</h3>
+                    <p className="text-[11px] text-slate-400">Lock the phone like a movie player</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowToddlerLockGuide(false)}
+                  className="px-2.5 py-1 bg-white/10 hover:bg-white/20 rounded-lg text-xs font-bold"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* iPhone / iPad Guide */}
+              <div className="p-3.5 bg-white/5 border border-white/10 rounded-2xl space-y-2">
+                <div className="flex items-center gap-2 text-amber-300 font-extrabold text-xs">
+                  <span>🍏 iPhone / iPad (Guided Access)</span>
+                </div>
+                <ol className="text-xs text-slate-300 space-y-1.5 list-decimal list-inside pl-1 leading-relaxed">
+                  <li>Go to <b>Settings → Accessibility → Guided Access</b> (Turn ON).</li>
+                  <li>In this game, <b>Triple-click the Power button</b> (or Home button).</li>
+                  <li>Tap <b>Start</b> in the top right corner!</li>
+                </ol>
+                <div className="p-2 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-[11px] text-emerald-200">
+                  ✨ <b>Result:</b> The phone is 100% locked into the game. Search bars, swipe exits, and app switching are disabled until you triple-click and enter your passcode!
+                </div>
+              </div>
+
+              {/* Android Guide */}
+              <div className="p-3.5 bg-white/5 border border-white/10 rounded-2xl space-y-2">
+                <div className="flex items-center gap-2 text-emerald-300 font-extrabold text-xs">
+                  <span>🤖 Android (App Pinning)</span>
+                </div>
+                <ol className="text-xs text-slate-300 space-y-1.5 list-decimal list-inside pl-1 leading-relaxed">
+                  <li>Go to <b>Settings → Security → App Pinning</b> (Turn ON).</li>
+                  <li>Swipe up to Recent Apps, tap the app icon, and select <b>Pin</b>!</li>
+                </ol>
+                <div className="p-2 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-[11px] text-emerald-200">
+                  ✨ <b>Result:</b> Toddler cannot leave the game without parent PIN!
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowToddlerLockGuide(false)}
+                className="w-full py-3 bg-rose-500 hover:bg-rose-600 text-white rounded-2xl font-bold text-xs shadow-lg"
+              >
+                Got It! Back to Game
+              </button>
+            </div>
+          </div>
+        )}
 
         <div className="pb-4 text-center text-xs text-white/80 space-y-1">
           <p>Lay phone flat on table face-up after tapping</p>
