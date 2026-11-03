@@ -815,7 +815,9 @@ export class WorldGenerator {
 
       // 7. Dynamic Module Objects: Traffic Cars (Shatters NPC car when rammed!)
       if (obj.type === 'traffic_car') {
-        const dist = Math.hypot(carPos.x - obj.position.x, carPos.z - obj.position.z);
+        const livePos = obj.mesh ? obj.mesh.getWorldPosition(new THREE.Vector3()) : obj.position;
+        obj.position.copy(livePos);
+        const dist = Math.hypot(carPos.x - livePos.x, carPos.z - livePos.z);
         if (dist < carRadius + obj.radius) {
           obj.hitTimestamp = now;
           this.destroyObject(obj);
@@ -825,9 +827,11 @@ export class WorldGenerator {
         continue;
       }
 
-      // 8. Dynamic Module Objects: Choo-Choo Steam Train & Railway
+      // 8. Dynamic Module Objects: Choo-Choo Steam Train & Railway (Shatters train when hit!)
       if (obj.type === 'train') {
-        const dist = Math.hypot(carPos.x - obj.position.x, carPos.z - obj.position.z);
+        const livePos = obj.mesh ? obj.mesh.getWorldPosition(new THREE.Vector3()) : obj.position;
+        obj.position.copy(livePos);
+        const dist = Math.hypot(carPos.x - livePos.x, carPos.z - livePos.z);
         if (dist < carRadius + obj.radius) {
           obj.hitTimestamp = now;
           this.destroyObject(obj);

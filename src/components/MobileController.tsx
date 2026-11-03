@@ -388,23 +388,49 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
 
   // Tap-to-Start Permission Handshake & Fullscreen YouTube-style Lock
   const handleTapToStart = async () => {
-    // 1. Immediately and synchronously unlock Web Audio on direct user tap
+    // 1. Immediately and synchronously invoke Fullscreen API on the direct user gesture
+    // (Must happen synchronously before any await or promise resolution)
+    try {
+      const docEl = document.documentElement as any;
+      if (docEl.requestFullscreen) {
+        docEl.requestFullscreen({ navigationUI: 'hide' }).catch(() => {});
+      } else if (docEl.webkitRequestFullscreen) {
+        docEl.webkitRequestFullscreen();
+      } else if (docEl.mozRequestFullScreen) {
+        docEl.mozRequestFullScreen();
+      } else if (docEl.msRequestFullscreen) {
+        docEl.msRequestFullscreen();
+      }
+    } catch {
+      // Ignore
+    }
+
+    // Scroll 1px to collapse mobile browser search bar & navigation toolbars
+    window.scrollTo(0, 1);
+
+    // 2. Synchronously unlock Web Audio on direct user tap
     mobileAudio.unlockSynchronously();
 
-    // 2. Trigger motion permissions
-    triggerPermissionsRequest();
-
-    // 3. Audio Activation & unlock
+    // 3. Audio Activation
     mobileAudio.setVolume(0.9);
     mobileAudio.startEngine();
     mobileAudio.startBgm();
     HapticsService.trigger('major', true, 1.2);
 
-    // 4. Enter Fullscreen and Lock Down Browser Navigation
-    await engageFullscreenLock();
+    // 4. Orientation & Wake Lock
+    try {
+      if (screen.orientation && 'lock' in screen.orientation) {
+        (screen.orientation as any).lock('portrait').catch(() => {});
+      }
+    } catch {
+      // Ignore
+    }
+    requestWakeLock();
 
-    // 5. Browser History Lock: Trap mobile swipe-back and hardware back buttons
-    // Push dummy states so swipe-back stays trapped in the game instead of exiting!
+    // 5. Trigger motion sensors
+    triggerPermissionsRequest();
+
+    // 6. Browser History Lock: Trap mobile swipe-back and hardware back buttons
     window.history.pushState({ app: 'toddler_drive', lock: 1 }, '', window.location.href);
     window.history.pushState({ app: 'toddler_drive', lock: 2 }, '', window.location.href);
     const onPopState = () => {
@@ -529,21 +555,21 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
         vGroup.position.y = 1.45;
       }
 
-      // CRITICAL USER REQUIREMENT:
-      // "the phone vehicle front should always face the front of the phone (so its not changed from beggining so he always know the fron of the phone is the front of the vehicle) so basically the camera from the phone vehicle should be the same but should roate direct time with the car so always front vehicle is fron of phone ."
       // Forward heading vector in 3D:
       const forwardX = -Math.sin(vehicleYaw);
       const forwardZ = -Math.cos(vehicleYaw);
 
-      // Camera stays directly overhead following the vehicle
-      camera.position.set(s.x, s.y + 26, s.z);
+      // EXACT SAME 3D BIRD'S-EYE PERSPECTIVE AS PC:
+      // On PC, camera is elevated 24m and offset 18m behind heading, looking 2m in front of vehicle at 0.5m height.
+      // By positioning 18m behind the vehicle along its heading, the vehicle is GUARANTEED to ALWAYS face
+      // directly towards the front/top of the phone screen, with the EXACT SAME gorgeous 3D view as PC!
+      const camX = s.x - forwardX * 18;
+      const camY = s.y + 24;
+      const camZ = s.z - forwardZ * 18;
 
-      // ALIGN CAMERA UP VECTOR WITH THE VEHICLE'S FORWARD HEADING VECTOR!
-      // In Three.js, camera.up points toward the top edge of the viewport (the physical top/front of the phone).
-      // By dynamically aligning camera.up with the vehicle's heading, the vehicle's nose is GUARANTEED
-      // to ALWAYS point straight UP toward the front of the phone, while the ground & world rotate around it!
-      camera.up.set(forwardX, 0, forwardZ).normalize();
-      camera.lookAt(s.x, s.y, s.z);
+      camera.position.set(camX, camY, camZ);
+      camera.up.set(0, 1, 0);
+      camera.lookAt(s.x + forwardX * 2, s.y + 0.5, s.z + forwardZ * 2);
 
       // Sun tracks vehicle
       sunLight.position.set(s.x + 15, s.y + 35, s.z + 15);
@@ -688,26 +714,30 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
 
         <div className="w-full max-w-xs space-y-3">
           <div className="py-6 px-6 bg-white text-slate-900 rounded-3xl shadow-2xl flex flex-col items-center text-center transform active:scale-95 transition-transform">
-            <div className="flex items-center gap-1.5 px-3 py-1 bg-amber-100 text-amber-800 rounded-full text-[11px] font-black uppercase tracking-wider mb-2">
-              <Lock className="w-3.5 h-3.5 text-amber-600" />
-              <span>Full-Screen Toddler Lock</span>
+            <div className="w-14 h-14 bg-rose-600 rounded-2xl flex items-center justify-center text-white shadow-lg mb-2 shadow-rose-500/40">
+              <Maximize2 className="w-8 h-8 animate-pulse" />
             </div>
-            <span className="text-2xl font-black tracking-wide text-orange-600">
-              TAP TO DRIVE!
+            <span className="text-2xl font-black tracking-wide text-rose-600">
+              PLAY IN FULL SCREEN
             </span>
             <span className="text-xs text-slate-500 mt-1 max-w-[220px]">
-              Enters locked fullscreen, collapses browser bars & enables steering sensors
+              Locks browser bars & back buttons like YouTube so toddlers stay inside the game
             </span>
           </div>
 
           {/* Test Sound & Buzz button before driving */}
           <button
             onClick={handleTestAudioAndVibrate}
-            className="w-full py-3 px-4 bg-white/20 hover:bg-white/30 backdrop-blur-md border border-white/40 rounded-2xl flex items-center justify-center gap-2 text-white font-bold text-xs shadow-lg transition-all active:scale-95"
+            className="w-full py-2.5 px-4 bg-white/20 hover:bg-white/30 backdrop-blur-md border border-white/40 rounded-2xl flex items-center justify-center gap-2 text-white font-bold text-xs shadow-lg transition-all active:scale-95"
           >
             <Vibrate className="w-4 h-4 text-amber-300" />
             <span>{testChimeActive ? '🔊 BUZZING & PLAYING!' : '🔊 Test Sound & Vibration'}</span>
           </button>
+
+          {/* Safari tip for iPhone users */}
+          <div className="px-3 py-1.5 bg-black/30 backdrop-blur-sm rounded-xl text-[10px] text-white/90 text-center leading-tight">
+            💡 iPhone tip: Tap Share ⎋ → &quot;Add to Home Screen&quot; for zero browser bars!
+          </div>
         </div>
 
         <div className="pb-4 text-center text-xs text-white/80 space-y-1">

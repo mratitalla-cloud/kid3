@@ -190,12 +190,12 @@ export const trainRailwayModule: WorldModule = {
 
         railwayGroup.add(train);
 
-        // Register train as collidable/destructible
+        // Register train as collidable/destructible with generous 5.0m radius
         registerCollidable(
           `train_${cx}_${cz}`,
           'train',
           new THREE.Vector3(originX + train.position.x, 1.5, originZ + trackZ),
-          3.5,
+          5.0,
           train,
           'major',
           false,
@@ -211,7 +211,7 @@ export const trainRailwayModule: WorldModule = {
   tickModule: (delta, elapsed, carPos, chunk) => {
     // 1. Chug the steam train along the railroad tracks
     const train = chunk.getObjectByName('npc_steam_train');
-    if (train && train.userData.speed !== undefined) {
+    if (train && train.userData.speed !== undefined && train.visible) {
       const spd = train.userData.speed;
       train.position.x += spd * delta;
 

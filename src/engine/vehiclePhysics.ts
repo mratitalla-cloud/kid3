@@ -158,14 +158,23 @@ export class VehiclePhysics {
     }
     this.targetYaw = (-deltaAngle * Math.PI) / 180;
 
-    // 3. 3D Flight Control: Full 360° Phone Pitch (Beta) and Roll (Gamma) for Biplane (Loops, Backflips, Barrel Rolls)
+    // 3. 3D Flight Control: Phone Pitch (Beta) and Roll (Gamma) for Biplane (Loops & Inverted Flight)
     if (this.isAirVehicle) {
       const rawBeta = packet.beta || 0;
       const rawGamma = packet.gamma || 0;
-      // In Three.js: negative X rotation tilts nose UP, positive tilts nose DOWN
-      // Phone beta: tilting phone back (beta > 0) pulls nose UP (-pitch)
-      this.targetPitch = (-rawBeta * Math.PI) / 180;
-      this.targetRoll = (rawGamma * Math.PI) / 180;
+
+      // Positive beta (tilting phone front up) pitches nose UP (+pitch into the sky)
+      // Negative beta (tilting phone front down) pitches nose DOWN (-pitch into a dive)
+      this.targetPitch = (rawBeta * Math.PI) / 180;
+      this.targetRoll = (-rawGamma * Math.PI) / 180;
+
+      // Inverted flight: When phone is flipped upside down (face-down on table):
+      // The biplane flies inverted (belly and wheels up), but NOSE STILL FLIES FORWARD!
+      if (Math.abs(rawBeta) > 115 || Math.abs(rawGamma) > 115) {
+        this.targetRoll = Math.PI; // Roll 180° around fuselage so nose stays pointing forward!
+        const wrappedBeta = rawBeta > 0 ? (180 - rawBeta) : (-180 - rawBeta);
+        this.targetPitch = (wrappedBeta * Math.PI) / 180;
+      }
     }
 
     // 4. Longitudinal Acceleration & Auto-Cruise Dynamics
@@ -233,8 +242,8 @@ export class VehiclePhysics {
 
     if (forward !== 0) {
       if (this.isAirVehicle) {
-        // Up/down keys pitch plane for loops/backflips and dives!
-        this.targetPitch += forward * -0.06;
+        // Up/down keys pitch plane nose UP (climb) and DOWN (dive)
+        this.targetPitch += forward * 0.06;
       } else {
         if (forward > 0) {
           this.temporaryBoost = Math.min(14.0, this.temporaryBoost + 8.0);
@@ -300,10 +309,9 @@ export class VehiclePhysics {
       this.rollAngle += rollDiff * Math.min(1.0, delta * 9.0);
 
       // 3D Aerodynamic Flight Trajectory:
-      // Nose pointing UP (pitchAngle < 0 in Three.js): climbs rapidly!
-      // Nose pointing DOWN (pitchAngle > 0): power dives!
-      // Apex of loop (pitchAngle ~ -PI): inverted flight!
-      const climbSpeed = -Math.sin(this.pitchAngle) * Math.cos(this.rollAngle) * Math.max(8.0, this.speed * 0.95);
+      // Nose pointing UP (pitchAngle > 0): climbs rapidly into the sky!
+      // Nose pointing DOWN (pitchAngle < 0): power dives!
+      const climbSpeed = Math.sin(this.pitchAngle) * Math.cos(this.rollAngle) * Math.max(8.0, this.speed * 0.95);
       this.altitude += climbSpeed * delta;
 
       // Soft ground cushion to skim above grass without clipping
