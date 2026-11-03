@@ -23,6 +23,8 @@ export class VehiclePhysics {
   public targetAltitude = 14.0; // Target altitude based on phone tilt
   public pitchAngle = 0;        // Nose pitch up/down
   public rollAngle = 0;         // Wing bank roll
+  public targetPitch = 0;       // Target pitch angle (full 360° range for loops/backflips)
+  public targetRoll = 0;        // Target roll angle (full 360° range for barrel rolls)
 
   // LERP Targets from network packets
   private targetYaw = 0;
@@ -156,13 +158,14 @@ export class VehiclePhysics {
     }
     this.targetYaw = (-deltaAngle * Math.PI) / 180;
 
-    // 3. 3D Flight Control: Phone Pitch (Beta) controls Altitude & Nose angle for planes
+    // 3. 3D Flight Control: Full 360° Phone Pitch (Beta) and Roll (Gamma) for Biplane (Loops, Backflips, Barrel Rolls)
     if (this.isAirVehicle) {
-      // Tilting phone back / up (beta > 0) climbs; tilting forward / down (beta < 0) dives!
-      const pitchInput = packet.beta || 0;
-      const normPitch = THREE.MathUtils.clamp(pitchInput / 30.0, -1.0, 1.0);
-      this.targetAltitude = 14.0 + normPitch * 14.0; // Between 2m and 28m
-      this.targetAltitude = THREE.MathUtils.clamp(this.targetAltitude, 2.0, 32.0);
+      const rawBeta = packet.beta || 0;
+      const rawGamma = packet.gamma || 0;
+      // In Three.js: negative X rotation tilts nose UP, positive tilts nose DOWN
+      // Phone beta: tilting phone back (beta > 0) pulls nose UP (-pitch)
+      this.targetPitch = (-rawBeta * Math.PI) / 180;
+      this.targetRoll = (rawGamma * Math.PI) / 180;
     }
 
     // 4. Longitudinal Acceleration & Auto-Cruise Dynamics
@@ -230,9 +233,8 @@ export class VehiclePhysics {
 
     if (forward !== 0) {
       if (this.isAirVehicle) {
-        // Up/down arrow keys pitch plane altitude
-        this.targetAltitude += forward * 0.6;
-        this.targetAltitude = THREE.MathUtils.clamp(this.targetAltitude, 2.0, 32.0);
+        // Up/down keys pitch plane for loops/backflips and dives!
+        this.targetPitch += forward * -0.06;
       } else {
         if (forward > 0) {
           this.temporaryBoost = Math.min(14.0, this.temporaryBoost + 8.0);
@@ -247,7 +249,7 @@ export class VehiclePhysics {
         this.verticalSpeed = 12.0;
         this.isGrounded = false;
       } else if (this.isAirVehicle) {
-        this.targetAltitude = Math.min(30.0, this.targetAltitude + 8.0);
+        this.targetPitch -= Math.PI; // Instant half-loop / flip!
       }
       this.jumpCooldown = performance.now();
       if (onJump) onJump();
@@ -288,47 +290,67 @@ export class VehiclePhysics {
     this.position.x += forwardX * this.speed * delta;
     this.position.z += forwardZ * this.speed * delta;
 
-    // 4. Vertical Physics (Ground jumping vs True Flight)
+    // 4. Vertical Physics (Ground jumping vs True 3D Flight)
     if (this.isAirVehicle) {
-      // 3D Flight altitude interpolation
-      this.altitude = THREE.MathUtils.damp(this.altitude, this.targetAltitude, 3.5, delta);
+      // Smoothly interpolate full 3D pitch and roll with wrap-around
+      const pitchDiff = (this.targetPitch - this.pitchAngle + Math.PI * 3) % (Math.PI * 2) - Math.PI;
+      this.pitchAngle += pitchDiff * Math.min(1.0, delta * 9.0);
+
+      const rollDiff = (this.targetRoll - this.rollAngle + Math.PI * 3) % (Math.PI * 2) - Math.PI;
+      this.rollAngle += rollDiff * Math.min(1.0, delta * 9.0);
+
+      // 3D Aerodynamic Flight Trajectory:
+      // Nose pointing UP (pitchAngle < 0 in Three.js): climbs rapidly!
+      // Nose pointing DOWN (pitchAngle > 0): power dives!
+      // Apex of loop (pitchAngle ~ -PI): inverted flight!
+      const climbSpeed = -Math.sin(this.pitchAngle) * Math.cos(this.rollAngle) * Math.max(8.0, this.speed * 0.95);
+      this.altitude += climbSpeed * delta;
+
+      // Soft ground cushion to skim above grass without clipping
+      if (this.altitude < 1.6) {
+        this.altitude = 1.6;
+        if (climbSpeed < -5.0 && onLanding) {
+          onLanding();
+        }
+      } else if (this.altitude > 65.0) {
+        this.altitude = 65.0;
+      }
       this.position.y = this.altitude;
 
-      // Calculate pitch angle based on climb rate
-      const altDelta = (this.targetAltitude - this.altitude);
-      this.pitchAngle = THREE.MathUtils.damp(this.pitchAngle, altDelta * 0.08, 6.0, delta);
+      // Full 360 degree 3-axis rotation (YXZ order prevents gimbal lock during backflips)
+      rootGroup.rotation.order = 'YXZ';
       rootGroup.rotation.x = this.pitchAngle;
-
-      // Bank roll into turns
-      this.rollAngle = THREE.MathUtils.damp(this.rollAngle, -diff * 1.8, 8.0, delta);
       rootGroup.rotation.z = this.rollAngle;
     } else {
       // Ground Vehicle Physics (Gravity & Jumping)
       rootGroup.rotation.x = 0;
-      if (!this.isGrounded) {
-        this.verticalSpeed -= 28.0 * delta; // Realistic toy gravity
-        this.position.y += this.verticalSpeed * delta;
-
-        if (this.position.y <= 0) {
-          this.position.y = 0;
-          if (Math.abs(this.verticalSpeed) > 8.0) {
-            // Cartoon elastic bounce on high drops!
-            this.verticalSpeed = -this.verticalSpeed * 0.35;
-            if (onLanding) onLanding();
-          } else {
-            this.verticalSpeed = 0;
-            this.isGrounded = true;
-            if (onLanding) onLanding();
-          }
-        }
-      }
-
-      // Visual side-tilt / flip animation
       if (this.isFlipped) {
         // Roll completely upside down (180 deg / Math.PI) on its roof, and stop!
         rootGroup.rotation.z = THREE.MathUtils.damp(rootGroup.rotation.z, Math.PI, 12.0, delta);
         this.speed = 0;
+        // Lift car by roof height (1.45m) so the roof rests exactly on the floor with ZERO clipping!
+        this.position.y = THREE.MathUtils.damp(this.position.y, 1.45, 14.0, delta);
       } else {
+        if (!this.isGrounded) {
+          this.verticalSpeed -= 28.0 * delta; // Realistic toy gravity
+          this.position.y += this.verticalSpeed * delta;
+
+          if (this.position.y <= 0) {
+            this.position.y = 0;
+            if (Math.abs(this.verticalSpeed) > 8.0) {
+              // Cartoon elastic bounce on high drops!
+              this.verticalSpeed = -this.verticalSpeed * 0.35;
+              if (onLanding) onLanding();
+            } else {
+              this.verticalSpeed = 0;
+              this.isGrounded = true;
+              if (onLanding) onLanding();
+            }
+          }
+        } else {
+          this.position.y = THREE.MathUtils.damp(this.position.y, 0, 14.0, delta);
+        }
+
         const turnRoll = -diff * Math.min(1.0, Math.abs(this.speed) / 12);
         rootGroup.rotation.z = THREE.MathUtils.damp(rootGroup.rotation.z, turnRoll, 10.0, delta);
       }

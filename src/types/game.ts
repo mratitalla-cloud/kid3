@@ -27,7 +27,7 @@ export type GameEvent =
   | { type: 'FORCE_REQUEST_PERMISSIONS' }
   | { type: 'RESET_SPAWN' }
   | { type: 'WORLD_WARP'; worldId: string }
-  | { type: 'GAME_STATE'; x: number; y: number; z: number; yaw: number; speed: number; worldId: string; powerUp?: string }
+  | { type: 'GAME_STATE'; x: number; y: number; z: number; yaw: number; speed: number; worldId: string; powerUp?: string; pitch?: number; roll?: number; isFlipped?: boolean }
   | { type: 'UPDATE_SETTINGS'; settings: Partial<ParentSettings> }
   | { type: 'PING'; timestamp: number }
   | { type: 'PONG'; timestamp: number };

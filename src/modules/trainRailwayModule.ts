@@ -94,89 +94,117 @@ export const trainRailwayModule: WorldModule = {
   aiPromptIdea: 'Generate toy railroad tracks with bridges, railway crossings, and steam trains.',
 
   spawnChunk: (chunk, cx, cz, originX, originZ, chunkSize, density, rand, registerCollidable) => {
-    // Spawn railway crossing on select chunks (every 2-3 chunks)
-    if (rand(120) > 0.45) {
-      const trackZ = 16 + rand(121) * (chunkSize - 32);
+    // Continuous East-West Railway Corridor:
+    // Placed at fixed trackZ = 28 across chunks with (cz % 2 === 0)
+    // Because every chunk in this row places rails from x = 0 to x = chunkSize at z = 28,
+    // the tracks connect with 100% seamless continuity across the infinite world!
+    const isRailCorridor = (cz % 2 + 2) % 2 === 0;
+    if (isRailCorridor) {
+      const trackZ = 28;
       const railwayGroup = new THREE.Group();
+      railwayGroup.name = 'railway_corridor';
 
-      // Dual Steel Rails crossing east-west across the chunk
-      const railGeo = new THREE.BoxGeometry(chunkSize, 0.12, 0.15);
+      // 1. Crushed Basalt Ballast Bed (Dark Gravel Foundation that prevents floating)
+      const ballastMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.95 });
+      const ballastGeo = new THREE.BoxGeometry(chunkSize, 0.14, 4.2);
+      const ballast = new THREE.Mesh(ballastGeo, ballastMat);
+      ballast.position.set(chunkSize / 2, 0.07, trackZ);
+      ballast.receiveShadow = true;
+      railwayGroup.add(ballast);
+
+      // 2. Dual Steel Rails spanning the full chunk width from x = 0 to x = chunkSize
+      const railGeo = new THREE.BoxGeometry(chunkSize, 0.22, 0.16);
       const northRail = new THREE.Mesh(railGeo, steelRailMat);
-      northRail.position.set(chunkSize / 2, 0.18, trackZ - 1.2);
+      northRail.position.set(chunkSize / 2, 0.24, trackZ - 1.25);
+      northRail.castShadow = true;
 
       const southRail = new THREE.Mesh(railGeo, steelRailMat);
-      southRail.position.set(chunkSize / 2, 0.18, trackZ + 1.2);
+      southRail.position.set(chunkSize / 2, 0.24, trackZ + 1.25);
+      southRail.castShadow = true;
 
       railwayGroup.add(northRail, southRail);
 
-      // Wooden Railroad Ties every 2.4 meters
-      const tieGeo = new THREE.BoxGeometry(0.65, 0.1, 3.2);
-      const numTies = Math.floor(chunkSize / 2.4);
+      // 3. Wooden Railroad Ties (Sleepers) placed evenly every 2.4 meters
+      const tieGeo = new THREE.BoxGeometry(0.7, 0.16, 3.4);
+      const numTies = Math.round(chunkSize / 2.4);
       for (let t = 0; t < numTies; t++) {
         const tie = new THREE.Mesh(tieGeo, railWoodTieMat);
-        tie.position.set(t * 2.4 + 1.2, 0.08, trackZ);
+        tie.position.set(t * 2.4 + 1.2, 0.13, trackZ);
         tie.receiveShadow = true;
         railwayGroup.add(tie);
       }
 
-      // Railroad Crossing Sign with Crossbuck & Flashing Red Signals
-      const postGeo = new THREE.CylinderGeometry(0.12, 0.14, 3.8, 8);
+      // 4. Level Roadway Crossing (Where central road at x = chunkSize/2 intersects the tracks)
+      const roadCrossingX = chunkSize / 2;
+      const postGeo = new THREE.CylinderGeometry(0.12, 0.14, 4.0, 8);
       const crossingPost = new THREE.Mesh(postGeo, signalCrossMat);
-      crossingPost.position.set(chunkSize / 2 + 5.5, 1.9, trackZ + 3.0);
+      crossingPost.position.set(roadCrossingX + 6.0, 2.0, trackZ + 3.2);
       crossingPost.castShadow = true;
 
       // X Crossbuck
-      const crossArmGeo = new THREE.BoxGeometry(1.6, 0.22, 0.06);
+      const crossArmGeo = new THREE.BoxGeometry(1.8, 0.24, 0.08);
       const arm1 = new THREE.Mesh(crossArmGeo, signalCrossMat);
       arm1.rotation.z = Math.PI / 4;
-      arm1.position.set(0, 1.2, 0);
+      arm1.position.set(0, 1.3, 0);
 
       const arm2 = new THREE.Mesh(crossArmGeo, signalCrossMat);
       arm2.rotation.z = -Math.PI / 4;
-      arm2.position.set(0, 1.2, 0);
+      arm2.position.set(0, 1.3, 0);
 
       crossingPost.add(arm1, arm2);
 
-      // Red flashing signal lights
-      const signalLight1 = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 8), signalRedMat);
+      // Flashing Red Signal Lights
+      const signalLight1 = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 8), signalRedMat);
       signalLight1.name = 'crossing_light_left';
-      signalLight1.position.set(-0.45, 0.6, 0.1);
+      signalLight1.position.set(-0.5, 0.65, 0.12);
 
-      const signalLight2 = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 8), signalRedMat);
+      const signalLight2 = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 8), signalRedMat);
       signalLight2.name = 'crossing_light_right';
-      signalLight2.position.set(0.45, 0.6, 0.1);
+      signalLight2.position.set(0.5, 0.65, 0.12);
 
       crossingPost.add(signalLight1, signalLight2);
       railwayGroup.add(crossingPost);
 
-      // Chugging Steam Locomotive Train on the track
-      const train = createSteamLocomotive();
-      train.position.set(chunkSize / 2 - 12 + rand(122) * 20, 0, trackZ);
-      train.userData = {
-        trackZ,
-        speed: (8 + rand(123) * 4) * (rand(124) > 0.5 ? 1 : -1),
-        chunkSize,
-        minX: -10,
-        maxX: chunkSize + 10,
-      };
-      // Face direction of travel
-      train.rotation.y = train.userData.speed > 0 ? -Math.PI / 2 : Math.PI / 2;
+      // Boom Gate (Striped red/white safety arm)
+      const gateArmGeo = new THREE.BoxGeometry(5.0, 0.15, 0.1);
+      const gateArm = new THREE.Mesh(gateArmGeo, trainRedMat);
+      gateArm.position.set(roadCrossingX + 2.5, 1.2, trackZ + 3.0);
+      railwayGroup.add(gateArm);
 
-      railwayGroup.add(train);
+      // 5. Chugging Steam Train: Spawn 1 train every 2 chunks along the continuous line
+      const hasTrain = (cx % 2 + 2) % 2 === 0;
+      if (hasTrain) {
+        const train = createSteamLocomotive();
+        // Position along the track
+        train.position.set(chunkSize / 2 + (rand(125) - 0.5) * 30, 0, trackZ);
+        const trainSpeed = 10.0 * (rand(126) > 0.5 ? 1 : -1);
+        train.userData = {
+          trackZ,
+          speed: trainSpeed,
+          chunkSize,
+          minX: -chunkSize * 0.5,
+          maxX: chunkSize * 1.5,
+        };
+        // Face direction of travel
+        train.rotation.y = trainSpeed > 0 ? -Math.PI / 2 : Math.PI / 2;
+
+        railwayGroup.add(train);
+
+        // Register train as collidable/destructible
+        registerCollidable(
+          `train_${cx}_${cz}`,
+          'train',
+          new THREE.Vector3(originX + train.position.x, 1.5, originZ + trackZ),
+          3.5,
+          train,
+          'major',
+          false,
+          undefined,
+          { sound: 'train_whistle' }
+        );
+      }
+
       chunk.add(railwayGroup);
-
-      // Register train as collidable/destructible
-      registerCollidable(
-        `train_${cx}_${cz}`,
-        'train',
-        new THREE.Vector3(originX + train.position.x, 1.5, originZ + trackZ),
-        3.2,
-        train,
-        'major',
-        false,
-        undefined,
-        { sound: 'train_whistle' }
-      );
     }
   },
 

@@ -26,6 +26,7 @@ import {
   Globe,
   Lock,
   Unlock,
+  Maximize2,
 } from 'lucide-react';
 
 interface MobileControllerProps {
@@ -74,8 +75,19 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
   const streamIntervalRef = useRef<number | null>(null);
   const lastAccelZRef = useRef(0);
 
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
   // Server state tracking for vehicle & camera synchronization
-  const serverVehiclePosRef = useRef({ x: 0, y: 0, z: 0, yaw: 0, speed: 0 });
+  const serverVehiclePosRef = useRef({
+    x: 0,
+    y: 0,
+    z: 0,
+    yaw: 0,
+    speed: 0,
+    pitch: 0,
+    roll: 0,
+    isFlipped: false,
+  });
 
   // 3D Top-Down Viewport Refs
   const vehicle3DGroupRef = useRef<THREE.Group>(new THREE.Group());
@@ -121,6 +133,9 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
         z: event.z,
         yaw: event.yaw,
         speed: event.speed,
+        pitch: event.pitch ?? 0,
+        roll: event.roll ?? 0,
+        isFlipped: event.isFlipped ?? false,
       };
       if (!isAudioMuted) {
         mobileAudio.updateEngineSpeed(Math.abs(event.speed) / 8);
@@ -340,7 +355,38 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
     setTimeout(() => setTestChimeActive(false), 900);
   };
 
-  // Tap-to-Start Permission Handshake
+  // Engage YouTube-style Fullscreen and Mobile Browser UI Lock
+  const engageFullscreenLock = async () => {
+    try {
+      const docEl = document.documentElement as any;
+      if (docEl.requestFullscreen) {
+        await docEl.requestFullscreen({ navigationUI: 'hide' });
+      } else if (docEl.webkitRequestFullscreen) {
+        await docEl.webkitRequestFullscreen();
+      } else if (docEl.mozRequestFullScreen) {
+        await docEl.mozRequestFullScreen();
+      } else if (docEl.msRequestFullscreen) {
+        await docEl.msRequestFullscreen();
+      }
+    } catch {
+      // Ignore fullscreen rejection
+    }
+
+    // Collapse Safari / Chrome address bar and navigation controls
+    window.scrollTo(0, 1);
+
+    try {
+      if (screen.orientation && 'lock' in screen.orientation) {
+        await (screen.orientation as any).lock('portrait');
+      }
+    } catch {
+      // Ignore orientation rejection
+    }
+
+    await requestWakeLock();
+  };
+
+  // Tap-to-Start Permission Handshake & Fullscreen YouTube-style Lock
   const handleTapToStart = async () => {
     // 1. Immediately and synchronously unlock Web Audio on direct user tap
     mobileAudio.unlockSynchronously();
@@ -354,29 +400,37 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
     mobileAudio.startBgm();
     HapticsService.trigger('major', true, 1.2);
 
-    // 4. Fullscreen Lock
-    try {
-      const docEl = document.documentElement as HTMLElement & {
-        webkitRequestFullscreen?: () => Promise<void>;
-      };
-      if (docEl.requestFullscreen) {
-        await docEl.requestFullscreen();
-      } else if (docEl.webkitRequestFullscreen) {
-        await docEl.webkitRequestFullscreen();
-      }
-    } catch {
-      // Ignore
-    }
+    // 4. Enter Fullscreen and Lock Down Browser Navigation
+    await engageFullscreenLock();
 
-    // 5. Orientation & Wake Lock
-    try {
-      if (screen.orientation && 'lock' in screen.orientation) {
-        await screen.orientation.lock('portrait');
+    // 5. Browser History Lock: Trap mobile swipe-back and hardware back buttons
+    // Push dummy states so swipe-back stays trapped in the game instead of exiting!
+    window.history.pushState({ app: 'toddler_drive', lock: 1 }, '', window.location.href);
+    window.history.pushState({ app: 'toddler_drive', lock: 2 }, '', window.location.href);
+    const onPopState = () => {
+      window.history.pushState({ app: 'toddler_drive', lock: Date.now() }, '', window.location.href);
+    };
+    window.addEventListener('popstate', onPopState);
+
+    const onFullscreenChange = () => {
+      const isFs = !!(
+        document.fullscreenElement ||
+        (document as any).webkitFullscreenElement ||
+        (document as any).mozFullScreenElement
+      );
+      setIsFullscreen(isFs);
+    };
+    document.addEventListener('fullscreenchange', onFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', onFullscreenChange);
+
+    // Block pinch-to-zoom gestures that scale browser page
+    const blockMultiTouch = (e: TouchEvent) => {
+      if (e.touches.length > 1) {
+        e.preventDefault();
       }
-    } catch {
-      // Ignore
-    }
-    await requestWakeLock();
+    };
+    window.addEventListener('touchstart', blockMultiTouch, { passive: false });
+    window.addEventListener('touchmove', blockMultiTouch, { passive: false });
 
     // 6. Start 60Hz data channel stream
     if (streamIntervalRef.current) {
@@ -415,7 +469,7 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
     scene.background = new THREE.Color(initialWorld.skyColor);
     scene.fog = new THREE.FogExp2(initialWorld.fogColor, 0.012);
 
-    // Top-Down Camera: positioned 26m directly above the vehicle looking straight down (90 degrees)
+    // Top-Down Camera: positioned 26m directly above the vehicle
     const camera = new THREE.PerspectiveCamera(48, width / height, 0.5, 150);
     camera.position.set(0, 26, 0);
     camera.lookAt(0, 0, 0);
@@ -456,15 +510,39 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
       vGroup.position.set(s.x, s.y, s.z);
 
       // Rotate vehicle: use server yaw if available, fallback to local gyro
+      let vehicleYaw = 0;
       if (s.yaw !== 0) {
-        vGroup.rotation.y = s.yaw;
+        vehicleYaw = s.yaw;
       } else {
         const alphaDeg = motionPacketRef.current.alpha;
-        vGroup.rotation.y = (-alphaDeg * Math.PI) / 180;
+        vehicleYaw = (-alphaDeg * Math.PI) / 180;
       }
+
+      // Order YXZ so loops/backflips and rolls animate cleanly
+      vGroup.rotation.order = 'YXZ';
+      vGroup.rotation.y = vehicleYaw;
+      vGroup.rotation.x = s.pitch || 0;
+      vGroup.rotation.z = s.roll || (s.isFlipped ? Math.PI : 0);
+
+      // Floor clipping fix: when car is upside down on roof, ensure it sits at roof height (1.45m)
+      if (s.isFlipped && vGroup.position.y < 1.45) {
+        vGroup.position.y = 1.45;
+      }
+
+      // CRITICAL USER REQUIREMENT:
+      // "the phone vehicle front should always face the front of the phone (so its not changed from beggining so he always know the fron of the phone is the front of the vehicle) so basically the camera from the phone vehicle should be the same but should roate direct time with the car so always front vehicle is fron of phone ."
+      // Forward heading vector in 3D:
+      const forwardX = -Math.sin(vehicleYaw);
+      const forwardZ = -Math.cos(vehicleYaw);
 
       // Camera stays directly overhead following the vehicle
       camera.position.set(s.x, s.y + 26, s.z);
+
+      // ALIGN CAMERA UP VECTOR WITH THE VEHICLE'S FORWARD HEADING VECTOR!
+      // In Three.js, camera.up points toward the top edge of the viewport (the physical top/front of the phone).
+      // By dynamically aligning camera.up with the vehicle's heading, the vehicle's nose is GUARANTEED
+      // to ALWAYS point straight UP toward the front of the phone, while the ground & world rotate around it!
+      camera.up.set(forwardX, 0, forwardZ).normalize();
       camera.lookAt(s.x, s.y, s.z);
 
       // Sun tracks vehicle
@@ -609,13 +687,16 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
         </div>
 
         <div className="w-full max-w-xs space-y-3">
-          <div className="py-7 px-6 bg-white text-slate-900 rounded-3xl shadow-2xl flex flex-col items-center text-center transform active:scale-95 transition-transform">
-            <Sparkles className="w-8 h-8 text-amber-500 mb-2 animate-spin" />
+          <div className="py-6 px-6 bg-white text-slate-900 rounded-3xl shadow-2xl flex flex-col items-center text-center transform active:scale-95 transition-transform">
+            <div className="flex items-center gap-1.5 px-3 py-1 bg-amber-100 text-amber-800 rounded-full text-[11px] font-black uppercase tracking-wider mb-2">
+              <Lock className="w-3.5 h-3.5 text-amber-600" />
+              <span>Full-Screen Toddler Lock</span>
+            </div>
             <span className="text-2xl font-black tracking-wide text-orange-600">
               TAP TO DRIVE!
             </span>
-            <span className="text-xs text-slate-500 mt-1">
-              Activates 3D map, steering gyro & sounds
+            <span className="text-xs text-slate-500 mt-1 max-w-[220px]">
+              Enters locked fullscreen, collapses browser bars & enables steering sensors
             </span>
           </div>
 
@@ -654,6 +735,20 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
       {/* Top Status Bar with Sensor Diagnostics & World Name */}
       <div className="w-full px-4 pt-3 flex items-center justify-between z-20 pointer-events-none">
         <div className="flex items-center gap-2">
+          {/* Fullscreen re-lock button if browser dropped out of fullscreen */}
+          {!isFullscreen && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                engageFullscreenLock();
+              }}
+              className="pointer-events-auto flex items-center gap-1.5 px-2.5 py-1 bg-amber-400 hover:bg-amber-300 text-slate-950 rounded-full text-[11px] font-black shadow-lg animate-pulse"
+            >
+              <Maximize2 className="w-3.5 h-3.5" />
+              <span>Full Screen</span>
+            </button>
+          )}
+
           {connectionState === 'connected' ? (
             <div className="flex items-center gap-1.5 px-3 py-1 bg-emerald-500/30 border border-emerald-400/50 rounded-full text-emerald-200 text-xs font-semibold backdrop-blur-sm shadow-md">
               <span className="w-2 h-2 rounded-full bg-emerald-400" />
