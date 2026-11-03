@@ -265,18 +265,25 @@ export const cosmicSkyCityWorld: WorldDefinition = {
 
       for (let c = 0; c < 4; c++) {
         const coinZ = startZ + c * 4.5;
-        const chipGeo = new THREE.BoxGeometry(0.9, 0.14, 0.9);
+        const chipGroup = new THREE.Group();
+        const chipGeo = new THREE.BoxGeometry(0.85, 0.45, 0.85);
         const chip = new THREE.Mesh(chipGeo, cyberCoinMat);
-        chip.position.set(chunkSize / 2 + offset, 0.9, coinZ);
-        chip.rotation.y = Math.PI / 4;
-        chunk.add(chip);
+        const star = new THREE.Mesh(
+          new THREE.OctahedronGeometry(0.35, 0),
+          new THREE.MeshStandardMaterial({ color: 0x38bdf8, emissive: 0x38bdf8, emissiveIntensity: 0.9 })
+        );
+        star.position.y = 0.25;
+        chipGroup.add(chip, star);
+        chipGroup.rotation.x = 0.85; // 50 deg tilt facing camera!
+        chipGroup.position.set(chunkSize / 2 + offset, 0.9, coinZ);
+        chunk.add(chipGroup);
 
         registerCollidable(
           `cyber_coin_${cx}_${cz}_${c}`,
           'coin',
           new THREE.Vector3(originX + chunkSize / 2 + offset, 0.9, originZ + coinZ),
-          1.4,
-          chip,
+          1.5,
+          chipGroup,
           'minor',
           false,
           undefined,
@@ -344,13 +351,13 @@ export const cosmicSkyCityWorld: WorldDefinition = {
       );
     }
 
-    // 10. PROCEDURAL STARGATE WARP PORTAL
-    if (rand(90) > 0.75 && availableWorldIds.length > 1) {
+    // 10. PROCEDURAL STARGATE WARP PORTAL (High Frequency for Exciting Exploration!)
+    if (rand(90) > 0.35 && availableWorldIds.length > 1) {
       const otherWorlds = availableWorldIds.filter((w) => w !== 'cosmic_sky_city');
       const targetWorldId = otherWorlds[Math.floor(rand(91) * otherWorlds.length)];
 
-      const portalX = chunkSize / 2 + (rand(92) > 0.5 ? 9.5 : -9.5);
-      const portalZ = 15 + rand(93) * (chunkSize - 30);
+      const portalX = chunkSize / 2 + (rand(92) > 0.6 ? 2.8 : rand(92) < 0.4 ? -2.8 : 0);
+      const portalZ = 12 + rand(93) * (chunkSize - 24);
 
       const portalGroup = new THREE.Group();
       portalGroup.name = 'cosmic_portal';

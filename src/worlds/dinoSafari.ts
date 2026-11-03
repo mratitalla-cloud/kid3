@@ -308,17 +308,24 @@ export const dinoSafariWorld: WorldDefinition = {
 
       for (let c = 0; c < 4; c++) {
         const coinZ = startZ + c * 4.5;
-        const gemGeo = new THREE.OctahedronGeometry(0.55);
-        const gem = new THREE.Mesh(gemGeo, amberCoinMat);
-        gem.position.set(chunkSize / 2 + offset, 0.9, coinZ);
-        chunk.add(gem);
+        const gemGroup = new THREE.Group();
+        const gemMesh = new THREE.Mesh(new THREE.OctahedronGeometry(0.7, 0), amberCoinMat);
+        gemMesh.scale.set(1.1, 0.5, 1.1);
+        const core = new THREE.Mesh(
+          new THREE.DodecahedronGeometry(0.35, 0),
+          new THREE.MeshStandardMaterial({ color: 0xfef08a, emissive: 0xfde047, emissiveIntensity: 0.8 })
+        );
+        gemGroup.add(gemMesh, core);
+        gemGroup.rotation.x = 0.85; // 50 deg tilt facing camera!
+        gemGroup.position.set(chunkSize / 2 + offset, 0.9, coinZ);
+        chunk.add(gemGroup);
 
         registerCollidable(
           `dino_coin_${cx}_${cz}_${c}`,
           'coin',
           new THREE.Vector3(originX + chunkSize / 2 + offset, 0.9, originZ + coinZ),
-          1.4,
-          gem,
+          1.5,
+          gemGroup,
           'minor',
           false,
           undefined,
@@ -395,13 +402,13 @@ export const dinoSafariWorld: WorldDefinition = {
       );
     }
 
-    // 10. PROCEDURAL STARGATE WARP PORTAL
-    if (rand(95) > 0.75 && availableWorldIds.length > 1) {
+    // 10. PROCEDURAL STARGATE WARP PORTAL (High Frequency for Exciting Exploration!)
+    if (rand(95) > 0.35 && availableWorldIds.length > 1) {
       const otherWorlds = availableWorldIds.filter((w) => w !== 'dino_safari');
       const targetWorldId = otherWorlds[Math.floor(rand(96) * otherWorlds.length)];
 
-      const portalX = chunkSize / 2 + (rand(97) > 0.5 ? 9.5 : -9.5);
-      const portalZ = 15 + rand(98) * (chunkSize - 30);
+      const portalX = chunkSize / 2 + (rand(97) > 0.6 ? 2.8 : rand(97) < 0.4 ? -2.8 : 0);
+      const portalZ = 12 + rand(98) * (chunkSize - 24);
 
       const portalGroup = new THREE.Group();
       portalGroup.name = 'dino_portal';

@@ -20,10 +20,16 @@ import {
   Check,
   FileCode,
   Globe,
+  Trees,
+  Car,
+  Train,
+  PartyPopper,
+  Flame,
 } from 'lucide-react';
 import { ParentSettings, MotionPacket } from '../types/game';
 import { BUILTIN_VEHICLES, getAiVehiclePrompt, loadVehicleFromModule, VehicleItem } from '../vehicles/roster';
 import { BUILTIN_WORLDS, getAiWorldPrompt, WorldDefinition } from '../worlds';
+import { BUILTIN_MODULES, getAiModulePrompt } from '../modules';
 
 interface ParentPanelProps {
   isOpen: boolean;
@@ -54,12 +60,14 @@ export const ParentPanel: React.FC<ParentPanelProps> = ({
   currentWorldId,
   onSelectWorld,
 }) => {
-  const [activeTab, setActiveTab] = useState<'calibration' | 'worlds' | 'vehicles' | 'audio' | 'environment'>('calibration');
+  const [activeTab, setActiveTab] = useState<'calibration' | 'worlds' | 'modules' | 'vehicles' | 'audio' | 'environment'>('calibration');
   const [customJsCode, setCustomJsCode] = useState('');
   const [importStatus, setImportStatus] = useState<string | null>(null);
   const [copiedPrompt, setCopiedPrompt] = useState(false);
   const [worldThemeIdea, setWorldThemeIdea] = useState('Underwater Coral Kingdom or Pirate Cove');
   const [copiedWorldPrompt, setCopiedWorldPrompt] = useState(false);
+  const [moduleIdea, setModuleIdea] = useState('Dinosaur stampede with stomping triceratops crossing');
+  const [copiedModulePrompt, setCopiedModulePrompt] = useState(false);
 
   if (!isOpen) return null;
 
@@ -169,6 +177,17 @@ export const ParentPanel: React.FC<ParentPanelProps> = ({
           >
             <Globe className="w-4 h-4" />
             Worlds & Portals
+          </button>
+          <button
+            onClick={() => setActiveTab('modules')}
+            className={`flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-t-lg transition-colors ${
+              activeTab === 'modules'
+                ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 border-t-2 border-indigo-600 shadow-sm'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+            }`}
+          >
+            <Sparkles className="w-4 h-4 text-amber-500" />
+            Modules & Events
           </button>
           <button
             onClick={() => setActiveTab('vehicles')}
@@ -485,6 +504,121 @@ export const ParentPanel: React.FC<ParentPanelProps> = ({
                     placeholder="e.g. Underwater Coral Kingdom or Pirate Cove"
                     className="w-full px-3 py-1.5 text-xs bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'modules' && (
+            <div className="space-y-6">
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <h3 className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                      Dynamic World Modules (Auto-Added to All Maps)
+                    </h3>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      Toggle interactive set-pieces: moving NPC cars, train tracks, forest hurdles, and ramps.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {BUILTIN_MODULES.map((m) => {
+                    const isEnabled = (settings.enabledModules || []).includes(m.id);
+                    return (
+                      <div
+                        key={m.id}
+                        onClick={() => {
+                          const current = new Set(settings.enabledModules || []);
+                          if (current.has(m.id)) {
+                            current.delete(m.id);
+                          } else {
+                            current.add(m.id);
+                          }
+                          onUpdateSettings({ ...settings, enabledModules: Array.from(current) });
+                        }}
+                        className={`cursor-pointer p-4 rounded-xl border text-left transition-all flex items-start justify-between ${
+                          isEnabled
+                            ? 'bg-indigo-50/70 dark:bg-indigo-950/40 border-indigo-500 shadow-sm'
+                            : 'bg-slate-50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-700 opacity-60'
+                        }`}
+                      >
+                        <div className="space-y-1 pr-3">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-slate-900 dark:text-slate-100">
+                              {m.name}
+                            </span>
+                            <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 uppercase">
+                              {m.category}
+                            </span>
+                          </div>
+                          <div className="text-[11px] font-medium text-indigo-600 dark:text-indigo-400">
+                            {m.subtitle}
+                          </div>
+                          <div className="text-[11px] text-slate-500 dark:text-slate-400 leading-snug">
+                            {m.description}
+                          </div>
+                        </div>
+
+                        <div
+                          className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${
+                            isEnabled ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-slate-600'
+                          }`}
+                        >
+                          <span
+                            className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                              isEnabled ? 'translate-x-4' : 'translate-x-0'
+                            }`}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* AI Module Generator Prompt */}
+              <div className="p-4 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                      <Sparkles className="w-4 h-4 text-amber-500" />
+                      AI Dynamic Module Generator
+                    </h4>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      Copy prompt to generate custom pluggable event modules (e.g. dinosaur stampedes, volcano lava, airport runways).
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      const prompt = getAiModulePrompt(moduleIdea);
+                      navigator.clipboard.writeText(prompt);
+                      setCopiedModulePrompt(true);
+                      setTimeout(() => setCopiedModulePrompt(false), 2000);
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-700 hover:bg-slate-100 dark:hover:bg-slate-600 rounded-lg border border-slate-300 dark:border-slate-600 transition-colors shadow-sm"
+                  >
+                    {copiedModulePrompt ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                    {copiedModulePrompt ? 'Copied Prompt!' : 'Copy AI Module Prompt'}
+                  </button>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+                    Module & Event Idea
+                  </label>
+                  <input
+                    type="text"
+                    value={moduleIdea}
+                    onChange={(e) => setModuleIdea(e.target.value)}
+                    placeholder="e.g. Construction site with dump trucks and bouncy dirt ramps"
+                    className="w-full px-3 py-1.5 text-xs bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+
+                <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                  💡 <strong>How to add new modules:</strong> Save your generated module file in <code className="px-1 py-0.5 bg-slate-200 dark:bg-slate-700 rounded text-[10px] font-mono">/src/modules/</code> and export it in <code className="px-1 py-0.5 bg-slate-200 dark:bg-slate-700 rounded text-[10px] font-mono">/src/modules/index.ts</code>. Every map immediately injects it into live procedural terrain!
                 </div>
               </div>
             </div>

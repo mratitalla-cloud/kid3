@@ -72,6 +72,13 @@ export const DesktopHost: React.FC = () => {
       // ignore
     }
     desktopAudio.setVolume(newSettings.desktopVolume);
+    if (worldGenRef.current && newSettings.enabledModules) {
+      worldGenRef.current.setEnabledModules(newSettings.enabledModules);
+    }
+    peerServiceRef.current?.send({
+      type: 'UPDATE_SETTINGS',
+      settings: newSettings,
+    });
   };
 
   // Switch 3D vehicle model in-place without tearing down Three.js scene
@@ -161,6 +168,11 @@ export const DesktopHost: React.FC = () => {
     } else if (event.type === 'SWAP_VEHICLE') {
       switchVehicleModel(event.vehicleId);
       desktopAudio.playVehicleSwap();
+    } else if (event.type === 'WORLD_WARP') {
+      handleSwitchWorld(event.worldId);
+    } else if (event.type === 'UPDATE_SETTINGS') {
+      const merged = { ...settingsRef.current, ...event.settings };
+      handleUpdateSettings(merged);
     }
   };
 
@@ -374,6 +386,15 @@ export const DesktopHost: React.FC = () => {
 
     // Procedural World Generator initialized with active world
     const worldGen = new WorldGenerator(scene, getWorldById(activeWorldIdRef.current));
+    worldGen.setEnabledModules(settingsRef.current.enabledModules);
+    worldGen.onDestroyCallback = (objType, pos, severity) => {
+      peerServiceRef.current?.send({
+        type: 'DESTRUCTION_EVENT',
+        objType,
+        pos: { x: pos.x, y: pos.y, z: pos.z },
+        severity,
+      });
+    };
     worldGenRef.current = worldGen;
 
     // Handle Window Resize
@@ -473,6 +494,10 @@ export const DesktopHost: React.FC = () => {
             else if (powerUp === 'squawk') desktopAudio.playSquawk();
             else if (powerUp === 'dino_roar') desktopAudio.playDinoRoar();
             else if (powerUp === 'ufo') desktopAudio.playUfoHum();
+            else if (powerUp === 'honk') desktopAudio.playHonk();
+            else if (powerUp === 'train_whistle') desktopAudio.playTrainWhistle();
+            else if (powerUp === 'whoosh') desktopAudio.playWhoosh();
+            else if (powerUp === 'pop') desktopAudio.playPop();
             else desktopAudio.playCrash('minor');
             peerServiceRef.current?.send({ type: 'INTERACTIVE_TRIGGER', action: 'creature', powerUp });
           }

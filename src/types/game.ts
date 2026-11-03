@@ -21,12 +21,14 @@ export type GameEvent =
   | { type: 'MOTION'; data: MotionPacket }
   | { type: 'SWAP_VEHICLE'; vehicleId: string }
   | { type: 'COLLISION_TRIGGER'; severity: CollisionSeverity; isAirItem?: boolean }
+  | { type: 'DESTRUCTION_EVENT'; objType: string; pos: { x: number; y: number; z: number }; severity: CollisionSeverity }
   | { type: 'INTERACTIVE_TRIGGER'; action: 'boost' | 'spring' | 'coin' | 'mystery' | 'creature'; noteIndex?: number; powerUp?: string }
   | { type: 'CALIBRATE_BASELINE'; baselineAlpha: number }
   | { type: 'FORCE_REQUEST_PERMISSIONS' }
   | { type: 'RESET_SPAWN' }
   | { type: 'WORLD_WARP'; worldId: string }
   | { type: 'GAME_STATE'; x: number; y: number; z: number; yaw: number; speed: number; worldId: string; powerUp?: string }
+  | { type: 'UPDATE_SETTINGS'; settings: Partial<ParentSettings> }
   | { type: 'PING'; timestamp: number }
   | { type: 'PONG'; timestamp: number };
 
@@ -56,6 +58,7 @@ export interface ParentSettings {
   activeVehicleIds: string[];  // Which vehicles appear in mobile swipe
   autoCruise: boolean;         // Constant stable speed so kid doesn't have to press phone
   cruiseSpeed: number;         // Stable cruise speed (4 - 20 m/s)
+  enabledModules: string[];    // Enabled dynamic world modules & events
 }
 
 export const DEFAULT_PARENT_SETTINGS: ParentSettings = {
@@ -73,4 +76,5 @@ export const DEFAULT_PARENT_SETTINGS: ParentSettings = {
   activeVehicleIds: ['roadster', 'steam_train', 'biplane', 'digger'],
   autoCruise: true,
   cruiseSpeed: 10,
+  enabledModules: ['traffic_cars', 'train_railway', 'dense_forest', 'stunt_ramps', 'balloon_parade'],
 };

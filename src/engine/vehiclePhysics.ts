@@ -86,14 +86,26 @@ export class VehiclePhysics {
   }
 
   public setVehicleType(type: 'ground' | 'air'): void {
+    const wasAir = this.isAirVehicle;
     this.isAirVehicle = type === 'air';
     if (this.isAirVehicle) {
-      this.targetAltitude = 14.0;
+      if (!wasAir) {
+        this.altitude = Math.max(12.0, this.position.y);
+        this.targetAltitude = 14.0;
+      }
       this.isGrounded = false;
     } else {
+      // Swapping from air to ground: DO NOT snap instantly to ground!
+      // Let it free-fall with gravity, plunging down and landing with a cartoon bounce!
       this.targetAltitude = 0;
-      this.altitude = 0;
-      this.isGrounded = true;
+      if (this.position.y > 0.5) {
+        this.isGrounded = false;
+        this.verticalSpeed = Math.min(-6.0, this.verticalSpeed);
+      } else {
+        this.position.y = 0;
+        this.altitude = 0;
+        this.isGrounded = true;
+      }
       this.pitchAngle = 0;
       this.rollAngle = 0;
     }
@@ -108,22 +120,32 @@ export class VehiclePhysics {
     onJump?: () => void,
     onFlip?: (severity: CollisionSeverity) => void
   ): void {
-    // 1. Flip Detection (Extreme tilt > 80 degrees)
-    const tiltMag = Math.max(Math.abs(packet.beta), Math.abs(packet.gamma));
-    if (tiltMag > 80 && !this.isAirVehicle) {
-      if (!this.isFlipped) {
-        this.isFlipped = true;
-        this.speed = 0;
-        this.targetSpeed = 0;
-        this.temporaryBoost = 0;
-        if (onFlip) onFlip('flip');
+    // 1. Tilt and Upside-Down Flip Detection
+    const absBeta = Math.abs(packet.beta || 0);
+    const absGamma = Math.abs(packet.gamma || 0);
+    const isExtremeAngle = absBeta > 55 || absGamma > 55;
+    const isFaceDown = absBeta > 125 || absGamma > 125;
+
+    if (!this.isAirVehicle) {
+      // Ground vehicles: if flipped upside down or tilted past wheel contact, STOP and roll on roof!
+      if (isExtremeAngle || isFaceDown) {
+        if (!this.isFlipped) {
+          this.isFlipped = true;
+          this.speed = 0;
+          this.targetSpeed = 0;
+          this.temporaryBoost = 0;
+          if (onFlip) onFlip('flip');
+        }
+        return;
+      } else if (absBeta < 35 && absGamma < 35 && this.isFlipped) {
+        this.isFlipped = false;
       }
-      return;
-    } else if (tiltMag < 35 && this.isFlipped) {
+
+      if (this.isFlipped) return;
+    } else {
+      // Air vehicles (planes): Plane WORKS UPSIDE DOWN (inverted aerobatics flight)!
       this.isFlipped = false;
     }
-
-    if (this.isFlipped) return;
 
     // 2. Tabletop Z-Axis Alignment (Steering Yaw)
     let deltaAngle = (packet.alpha - settings.baselineAlpha + 360) % 360;
@@ -138,8 +160,6 @@ export class VehiclePhysics {
     if (this.isAirVehicle) {
       // Tilting phone back / up (beta > 0) climbs; tilting forward / down (beta < 0) dives!
       const pitchInput = packet.beta || 0;
-      // Normal flat is around 0. Pitch up: 10 to 45 deg -> altitude climbs up to 32m
-      // Pitch down: -5 to -35 deg -> altitude dives toward 2m
       const normPitch = THREE.MathUtils.clamp(pitchInput / 30.0, -1.0, 1.0);
       this.targetAltitude = 14.0 + normPitch * 14.0; // Between 2m and 28m
       this.targetAltitude = THREE.MathUtils.clamp(this.targetAltitude, 2.0, 32.0);
@@ -286,20 +306,28 @@ export class VehiclePhysics {
       // Ground Vehicle Physics (Gravity & Jumping)
       rootGroup.rotation.x = 0;
       if (!this.isGrounded) {
-        this.verticalSpeed -= 26.0 * delta;
+        this.verticalSpeed -= 28.0 * delta; // Realistic toy gravity
         this.position.y += this.verticalSpeed * delta;
 
         if (this.position.y <= 0) {
           this.position.y = 0;
-          this.verticalSpeed = 0;
-          this.isGrounded = true;
-          if (onLanding) onLanding();
+          if (Math.abs(this.verticalSpeed) > 8.0) {
+            // Cartoon elastic bounce on high drops!
+            this.verticalSpeed = -this.verticalSpeed * 0.35;
+            if (onLanding) onLanding();
+          } else {
+            this.verticalSpeed = 0;
+            this.isGrounded = true;
+            if (onLanding) onLanding();
+          }
         }
       }
 
       // Visual side-tilt / flip animation
       if (this.isFlipped) {
-        rootGroup.rotation.z = THREE.MathUtils.damp(rootGroup.rotation.z, 1.4, 8.0, delta);
+        // Roll completely upside down (180 deg / Math.PI) on its roof, and stop!
+        rootGroup.rotation.z = THREE.MathUtils.damp(rootGroup.rotation.z, Math.PI, 12.0, delta);
+        this.speed = 0;
       } else {
         const turnRoll = -diff * Math.min(1.0, Math.abs(this.speed) / 12);
         rootGroup.rotation.z = THREE.MathUtils.damp(rootGroup.rotation.z, turnRoll, 10.0, delta);

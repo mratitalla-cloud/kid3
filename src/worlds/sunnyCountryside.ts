@@ -193,25 +193,32 @@ export const sunnyCountrysideWorld: WorldDefinition = {
     }
 
     // 4. MUSICAL MELODY COINS (Ascending Major Scale!)
-    // Chains of 4 golden spinning coins that play ascending chime notes
+    // Chains of 4 golden spinning 3D star coins that play ascending chime notes
     if (rand(30) > 0.3) {
       const startZ = 10 + rand(31) * (chunkSize - 35);
       const coinOffset = (rand(32) - 0.5) * 2.8;
 
       for (let c = 0; c < 4; c++) {
         const coinZ = startZ + c * 4.5;
-        const coinGeo = new THREE.CylinderGeometry(0.55, 0.55, 0.12, 16);
-        coinGeo.rotateZ(Math.PI / 2);
-        const coinMesh = new THREE.Mesh(coinGeo, goldCoinMat);
-        coinMesh.position.set(chunkSize / 2 + coinOffset, 0.9, coinZ);
-        chunk.add(coinMesh);
+        const coinGroup = new THREE.Group();
+        const disc = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.7, 0.35, 16), goldCoinMat);
+        const star = new THREE.Mesh(
+          new THREE.OctahedronGeometry(0.42, 0),
+          new THREE.MeshStandardMaterial({ color: 0xfef08a, emissive: 0xfde047, emissiveIntensity: 0.6 })
+        );
+        star.position.y = 0.22;
+        star.scale.set(1.1, 0.3, 1.1);
+        coinGroup.add(disc, star);
+        coinGroup.rotation.x = 0.85; // 50 deg tilt facing camera!
+        coinGroup.position.set(chunkSize / 2 + coinOffset, 0.9, coinZ);
+        chunk.add(coinGroup);
 
         registerCollidable(
           `coin_${cx}_${cz}_${c}`,
           'coin',
           new THREE.Vector3(originX + chunkSize / 2 + coinOffset, 0.9, originZ + coinZ),
-          1.4,
-          coinMesh,
+          1.5,
+          coinGroup,
           'minor',
           false,
           undefined,
@@ -448,13 +455,14 @@ export const sunnyCountrysideWorld: WorldDefinition = {
       }
     }
 
-    // 11. PROCEDURAL STARGATE WARP PORTAL
-    if (rand(95) > 0.75 && availableWorldIds.length > 1) {
+    // 11. PROCEDURAL STARGATE WARP PORTAL (High Frequency for Exciting Exploration!)
+    if (rand(95) > 0.35 && availableWorldIds.length > 1) {
       const otherWorlds = availableWorldIds.filter((w) => w !== 'sunny_countryside');
       const targetWorldId = otherWorlds[Math.floor(rand(96) * otherWorlds.length)];
 
-      const portalX = chunkSize / 2 + (rand(97) > 0.5 ? 9.5 : -9.5);
-      const portalZ = 15 + rand(98) * (chunkSize - 30);
+      // Spawns right on or adjacent to the roadway
+      const portalX = chunkSize / 2 + (rand(97) > 0.6 ? 2.8 : rand(97) < 0.4 ? -2.8 : 0);
+      const portalZ = 12 + rand(98) * (chunkSize - 24);
 
       const portalGroup = new THREE.Group();
       portalGroup.name = 'portal_vortex';

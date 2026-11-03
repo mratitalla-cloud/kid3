@@ -6,12 +6,13 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import * as THREE from 'three';
 import { PeerService, ConnectionState } from '../services/peerService';
-import { GameEvent, MotionPacket } from '../types/game';
+import { GameEvent, MotionPacket, ParentSettings, DEFAULT_PARENT_SETTINGS } from '../types/game';
 import { BUILTIN_VEHICLES, VehicleItem } from '../vehicles/roster';
 import { mobileAudio } from '../services/audioService';
 import { HapticsService } from '../services/hapticsService';
 import { WorldGenerator } from '../engine/worldGenerator';
 import { getWorldById } from '../worlds';
+import { ParentPanel } from './ParentPanel';
 import {
   Volume2,
   VolumeX,
@@ -20,10 +21,11 @@ import {
   WifiOff,
   Compass,
   AlertCircle,
-  ArrowUpCircle,
   CheckCircle,
   Vibrate,
   Globe,
+  Lock,
+  Unlock,
 } from 'lucide-react';
 
 interface MobileControllerProps {
@@ -42,8 +44,16 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
 
   // Active World and Warp state on Phone
   const [activeWorldName, setActiveWorldName] = useState('Sunny Countryside');
+  const [activeWorldId, setActiveWorldId] = useState('sunny_countryside');
   const [isWarpingMobile, setIsWarpingMobile] = useState(false);
   const [testChimeActive, setTestChimeActive] = useState(false);
+
+  // Parent settings on phone & Toddler lock state (3s hold to unlock)
+  const [parentSettings, setParentSettings] = useState<ParentSettings>(DEFAULT_PARENT_SETTINGS);
+  const [isParentPanelOpen, setIsParentPanelOpen] = useState(false);
+  const [lockProgress, setLockProgress] = useState(0);
+  const lockTimerRef = useRef<number | null>(null);
+  const lockStartTimeRef = useRef<number>(0);
 
   const canvasMountRef = useRef<HTMLDivElement>(null);
   const peerServiceRef = useRef<PeerService | null>(null);
@@ -138,6 +148,10 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
         else if (event.powerUp === 'squawk') mobileAudio.playSquawk();
         else if (event.powerUp === 'dino_roar') mobileAudio.playDinoRoar();
         else if (event.powerUp === 'ufo') mobileAudio.playUfoHum();
+        else if (event.powerUp === 'honk') mobileAudio.playHonk();
+        else if (event.powerUp === 'train_whistle') mobileAudio.playTrainWhistle();
+        else if (event.powerUp === 'whoosh') mobileAudio.playWhoosh();
+        else if (event.powerUp === 'pop') mobileAudio.playPop();
         else mobileAudio.playCrash('minor');
         HapticsService.trigger('minor', true, 1.1);
       }
@@ -145,6 +159,7 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
       const world = getWorldById(event.worldId);
       if (world) {
         setActiveWorldName(world.name);
+        setActiveWorldId(world.id);
         setIsWarpingMobile(true);
         mobileAudio.playPortalWarp();
         HapticsService.trigger('major', true, 1.3);
@@ -153,6 +168,23 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
         }
         setTimeout(() => setIsWarpingMobile(false), 1200);
       }
+    } else if (event.type === 'DESTRUCTION_EVENT') {
+      // Shatter obstacles into physical tumbling 3D debris directly on the phone screen!
+      if (worldGenRef.current) {
+        worldGenRef.current.triggerDebris(
+          event.objType,
+          new THREE.Vector3(event.pos.x, event.pos.y, event.pos.z),
+          event.severity
+        );
+      }
+    } else if (event.type === 'UPDATE_SETTINGS') {
+      setParentSettings((prev) => {
+        const merged = { ...prev, ...event.settings };
+        if (worldGenRef.current && event.settings.enabledModules) {
+          worldGenRef.current.setEnabledModules(event.settings.enabledModules);
+        }
+        return merged;
+      });
     } else if (event.type === 'COLLISION_TRIGGER') {
       HapticsService.trigger(event.severity, true, 1.2);
       if (event.isAirItem) {
@@ -507,27 +539,38 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
     }
   };
 
-  const handleManualJump = (e: React.MouseEvent | React.TouchEvent) => {
+  // Toddler-Proof Lock: 3-second hold to unlock parent menu
+  const handleLockPointerDown = (e: React.PointerEvent | React.TouchEvent) => {
     e.stopPropagation();
     mobileAudio.unlockSynchronously();
-    motionPacketRef.current.accelZ = 12.0;
-    mobileAudio.playJump();
-    HapticsService.trigger('landing', true, 1.0);
-    setTimeout(() => {
-      motionPacketRef.current.accelZ = 0;
-    }, 120);
+    lockStartTimeRef.current = performance.now();
+    if (lockTimerRef.current) cancelAnimationFrame(lockTimerRef.current);
+
+    const HOLD_MS = 3000;
+    const checkHold = () => {
+      const elapsed = performance.now() - lockStartTimeRef.current;
+      const progress = Math.min(100, (elapsed / HOLD_MS) * 100);
+      setLockProgress(progress);
+
+      if (progress >= 100) {
+        setIsParentPanelOpen(true);
+        setLockProgress(0);
+        mobileAudio.playMysteryFanfare();
+        HapticsService.trigger('major', true, 1.5);
+      } else {
+        lockTimerRef.current = requestAnimationFrame(checkHold);
+      }
+    };
+    lockTimerRef.current = requestAnimationFrame(checkHold);
   };
 
-  const toggleAudio = (e: React.MouseEvent) => {
+  const handleLockPointerUp = (e: React.PointerEvent | React.TouchEvent) => {
     e.stopPropagation();
-    mobileAudio.unlockSynchronously();
-    if (isAudioMuted) {
-      mobileAudio.setVolume(0.9);
-      setIsAudioMuted(false);
-    } else {
-      mobileAudio.setVolume(0);
-      setIsAudioMuted(true);
+    if (lockTimerRef.current) {
+      cancelAnimationFrame(lockTimerRef.current);
+      lockTimerRef.current = null;
     }
+    setLockProgress(0);
   };
 
   // Cleanup on unmount
@@ -648,35 +691,58 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
           )}
         </div>
 
-        {/* Action Buttons: Sound & Vibration Test + Quiet Mute */}
-        <div className="flex items-center gap-2">
-          <button
-            onClick={handleTestAudioAndVibrate}
-            title="Test audio and physical rumble"
-            className="pointer-events-auto flex items-center gap-1 px-2.5 py-1.5 bg-slate-900/60 hover:bg-slate-900/80 backdrop-blur-sm rounded-full text-white text-xs font-bold shadow-md transition-all active:scale-95"
-          >
-            <Vibrate className="w-3.5 h-3.5 text-amber-300" />
-            <span className="text-[11px]">{testChimeActive ? 'BUZZ!' : 'Test'}</span>
-          </button>
+        {/* Toddler-Proof Parent Lock Button (Hold 3 seconds to unlock full menu) */}
+        <div
+          onPointerDown={handleLockPointerDown}
+          onPointerUp={handleLockPointerUp}
+          onPointerCancel={handleLockPointerUp}
+          onPointerLeave={handleLockPointerUp}
+          onTouchStart={handleLockPointerDown}
+          onTouchEnd={handleLockPointerUp}
+          onTouchCancel={handleLockPointerUp}
+          className="pointer-events-auto relative cursor-pointer select-none touch-none px-3 py-1.5 rounded-2xl bg-slate-900/80 backdrop-blur-md border border-white/20 shadow-xl flex items-center gap-2 transition-transform active:scale-95"
+        >
+          <div className="relative w-8 h-8 flex items-center justify-center">
+            {/* Circular Progress Ring */}
+            <svg className="w-8 h-8 -rotate-90" viewBox="0 0 36 36">
+              <path
+                className="text-white/20"
+                strokeWidth="3.5"
+                stroke="currentColor"
+                fill="none"
+                d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+              />
+              <path
+                className="text-emerald-400 transition-all duration-75"
+                strokeDasharray={`${lockProgress}, 100`}
+                strokeWidth="3.5"
+                strokeLinecap="round"
+                stroke="currentColor"
+                fill="none"
+                d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+              />
+            </svg>
+            <div className="absolute inset-0 flex items-center justify-center">
+              {lockProgress > 0 ? (
+                <span className="text-[10px] font-black text-emerald-300">
+                  {Math.round(lockProgress)}%
+                </span>
+              ) : (
+                <Lock className="w-4 h-4 text-white/80" />
+              )}
+            </div>
+          </div>
 
-          <button
-            onClick={toggleAudio}
-            className="pointer-events-auto p-2 bg-slate-900/60 backdrop-blur-sm hover:bg-slate-900/80 rounded-full text-white shadow-md transition-colors"
-          >
-            {isAudioMuted ? <VolumeX className="w-4 h-4 text-rose-400" /> : <Volume2 className="w-4 h-4" />}
-          </button>
+          <div className="flex flex-col text-left pr-1 pointer-events-none">
+            <span className="text-[10px] font-bold text-white tracking-wide uppercase">
+              {lockProgress > 0 ? 'Hold 3s...' : 'Parents'}
+            </span>
+            <span className="text-[9px] text-white/60">
+              {lockProgress > 0 ? 'Keep holding' : 'Hold to unlock'}
+            </span>
+          </div>
         </div>
       </div>
-
-      {/* Floating Tactical Jump Button */}
-      <button
-        onClick={handleManualJump}
-        onTouchStart={handleManualJump}
-        className="absolute bottom-6 right-6 z-30 pointer-events-auto flex items-center gap-1.5 px-5 py-3 bg-indigo-600 active:bg-indigo-500 text-white rounded-full shadow-2xl border-2 border-indigo-400/60 text-sm font-black active:scale-95 transition-all"
-      >
-        <ArrowUpCircle className="w-5 h-5 text-amber-300" />
-        <span>JUMP!</span>
-      </button>
 
       {/* Bottom Subtitle Indicator */}
       <div className="w-full pb-4 px-6 text-center z-20 pointer-events-none">
@@ -720,6 +786,44 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
             </button>
           </div>
         </div>
+      )}
+
+      {/* Embedded Full Parent Settings Panel on Phone */}
+      {isParentPanelOpen && (
+        <ParentPanel
+          isOpen={isParentPanelOpen}
+          onClose={() => setIsParentPanelOpen(false)}
+          settings={parentSettings}
+          onUpdateSettings={(newSettings) => {
+            setParentSettings(newSettings);
+            peerServiceRef.current?.send({
+              type: 'UPDATE_SETTINGS',
+              settings: newSettings,
+            });
+            if (worldGenRef.current && newSettings.enabledModules) {
+              worldGenRef.current.setEnabledModules(newSettings.enabledModules);
+            }
+          }}
+          latestMotion={motionPacketRef.current}
+          onLockBaseline={() => {
+            peerServiceRef.current?.send({
+              type: 'CALIBRATE_BASELINE',
+              baselineAlpha: motionPacketRef.current.alpha,
+            });
+            setParentSettings((prev) => ({ ...prev, baselineAlpha: motionPacketRef.current.alpha }));
+          }}
+          onResetSpawn={() => {
+            peerServiceRef.current?.send({ type: 'RESET_SPAWN' });
+          }}
+          onAddCustomVehicle={() => {}}
+          activeVehicles={vehicles}
+          onForceRequestPermissions={triggerPermissionsRequest}
+          currentWorldId={activeWorldId}
+          onSelectWorld={(worldId) => {
+            peerServiceRef.current?.send({ type: 'WORLD_WARP', worldId });
+            handleHostEvent({ type: 'WORLD_WARP', worldId });
+          }}
+        />
       )}
     </div>
   );

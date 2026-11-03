@@ -25,7 +25,12 @@ export type InteractiveObjectType =
   | 'jump_pad'
   | 'coin'
   | 'mystery_box'
-  | 'creature';
+  | 'creature'
+  | 'traffic_car'
+  | 'fallen_log'
+  | 'train'
+  | 'stunt_ramp'
+  | 'balloon_cluster';
 
 export interface CollidableRegisterFn {
   (

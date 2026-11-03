@@ -7,6 +7,7 @@ import * as THREE from 'three';
 import { CollisionSeverity } from '../types/game';
 import { WorldDefinition, InteractiveObjectType } from '../worlds/types';
 import { sunnyCountrysideWorld, getAllAvailableWorldIds } from '../worlds';
+import { BUILTIN_MODULES } from '../modules';
 
 export interface DebrisPiece {
   mesh: THREE.Mesh;
@@ -30,12 +31,14 @@ export interface CollidableObject {
   isDestroyed: boolean;
   respawnTime: number;
   portalTargetWorldId?: string;
-  extraData?: { noteIndex?: number; powerUp?: string; sound?: string };
+  extraData?: { noteIndex?: number; powerUp?: string; sound?: string; speed?: number };
 }
 
 export class WorldGenerator {
   public scene: THREE.Scene;
   public currentWorld: WorldDefinition;
+  public enabledModules: Set<string> = new Set(['traffic_cars', 'train_railway', 'dense_forest', 'stunt_ramps', 'balloon_parade']);
+  public onDestroyCallback?: (objType: string, pos: THREE.Vector3, severity: CollisionSeverity) => void;
   private chunkSize = 70;
   private activeChunks = new Map<string, THREE.Group>();
   private collidables: CollidableObject[] = [];
@@ -67,6 +70,16 @@ export class WorldGenerator {
   private crystalMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, emissive: 0x0284c7, roughness: 0.2 });
   private featherMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.8 });
   private mysteryShardMat = new THREE.MeshStandardMaterial({ color: 0xa855f7, emissive: 0xc084fc, roughness: 0.2 });
+  private carYellowMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.3 });
+  private carTireMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.9 });
+  private carBumperMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.3 });
+  private trainRedMat = new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.4 });
+  private trainSmokeMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9, transparent: true, opacity: 0.8 });
+  private logWoodMat = new THREE.MeshStandardMaterial({ color: 0x5c2e0b, roughness: 0.85 });
+  private mossGreenMat = new THREE.MeshStandardMaterial({ color: 0x65a30d, roughness: 0.7 });
+  private balloonRedMat = new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.2 });
+  private balloonBlueMat = new THREE.MeshStandardMaterial({ color: 0x3b82f6, roughness: 0.2 });
+  private balloonPurpleMat = new THREE.MeshStandardMaterial({ color: 0xa855f7, roughness: 0.2 });
 
   // Ground and road materials cached per world
   private groundMaterial: THREE.MeshStandardMaterial;
@@ -244,16 +257,147 @@ export class WorldGenerator {
   /**
    * Cartoon Destruction Engine:
    * Shatters hit obstacles into tumbling 3D debris pieces with physics!
+   * Can be triggered locally or called from remote WebRTC DESTRUCTION_EVENT!
    */
-  public destroyObject(obj: CollidableObject): void {
-    obj.isDestroyed = true;
-    obj.respawnTime = performance.now() + 8500;
-    obj.mesh.visible = false;
+  public triggerDebris(type: string, pos: THREE.Vector3, severity: CollisionSeverity = 'minor'): void {
+    this.triggerConfetti(pos, severity === 'major' ? 50 : 30);
 
-    this.triggerConfetti(obj.position, obj.severity === 'major' ? 50 : 30);
-    const pos = obj.position;
+    switch (type) {
+      case 'traffic_car': {
+        // 4 rolling wheels with silver hubs
+        const wheelGeo = new THREE.CylinderGeometry(0.38, 0.38, 0.35, 12);
+        wheelGeo.rotateZ(Math.PI / 2);
+        for (let i = 0; i < 4; i++) {
+          const wheel = new THREE.Mesh(wheelGeo, this.carTireMat);
+          wheel.position.set(pos.x + (Math.random() - 0.5) * 1.5, pos.y + 0.6, pos.z + (Math.random() - 0.5) * 1.5);
+          this.scene.add(wheel);
+          this.activeDebris.push({
+            mesh: wheel,
+            velocity: new THREE.Vector3((Math.random() - 0.5) * 11, 5 + Math.random() * 6, (Math.random() - 0.5) * 11),
+            angularVelocity: new THREE.Vector3(Math.random() * 12, Math.random() * 12, Math.random() * 12),
+            life: 3.0,
+          });
+        }
+        // Chassis chunks
+        const bodyGeo = new THREE.BoxGeometry(0.85, 0.55, 0.95);
+        for (let i = 0; i < 3; i++) {
+          const chunk = new THREE.Mesh(bodyGeo, this.carYellowMat);
+          chunk.position.set(pos.x + (Math.random() - 0.5) * 1.8, pos.y + 0.9, pos.z + (Math.random() - 0.5) * 1.8);
+          this.scene.add(chunk);
+          this.activeDebris.push({
+            mesh: chunk,
+            velocity: new THREE.Vector3((Math.random() - 0.5) * 10, 6 + Math.random() * 7, (Math.random() - 0.5) * 10),
+            angularVelocity: new THREE.Vector3(Math.random() * 8, Math.random() * 8, Math.random() * 8),
+            life: 3.2,
+          });
+        }
+        // Bumper bar
+        const bumper = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.25, 0.3), this.carBumperMat);
+        bumper.position.set(pos.x, pos.y + 0.5, pos.z);
+        this.scene.add(bumper);
+        this.activeDebris.push({
+          mesh: bumper,
+          velocity: new THREE.Vector3((Math.random() - 0.5) * 8, 4 + Math.random() * 5, (Math.random() - 0.5) * 8),
+          angularVelocity: new THREE.Vector3(Math.random() * 7, Math.random() * 7, Math.random() * 7),
+          life: 2.8,
+        });
+        break;
+      }
 
-    switch (obj.type) {
+      case 'train': {
+        // Red train wheels & black boiler parts
+        const wheelGeo = new THREE.CylinderGeometry(0.5, 0.5, 0.3, 12);
+        wheelGeo.rotateZ(Math.PI / 2);
+        for (let i = 0; i < 4; i++) {
+          const wheel = new THREE.Mesh(wheelGeo, this.trainRedMat);
+          wheel.position.set(pos.x + (Math.random() - 0.5) * 2, pos.y + 0.8, pos.z + (Math.random() - 0.5) * 2);
+          this.scene.add(wheel);
+          this.activeDebris.push({
+            mesh: wheel,
+            velocity: new THREE.Vector3((Math.random() - 0.5) * 12, 6 + Math.random() * 8, (Math.random() - 0.5) * 12),
+            angularVelocity: new THREE.Vector3(Math.random() * 10, Math.random() * 10, Math.random() * 10),
+            life: 3.2,
+          });
+        }
+        // White puffy steam rings
+        const steamGeo = new THREE.DodecahedronGeometry(0.7, 1);
+        for (let i = 0; i < 4; i++) {
+          const steam = new THREE.Mesh(steamGeo, this.trainSmokeMat);
+          steam.position.set(pos.x + (Math.random() - 0.5) * 1.5, pos.y + 1.8, pos.z + (Math.random() - 0.5) * 1.5);
+          this.scene.add(steam);
+          this.activeDebris.push({
+            mesh: steam,
+            velocity: new THREE.Vector3((Math.random() - 0.5) * 6, 4 + Math.random() * 6, (Math.random() - 0.5) * 6),
+            angularVelocity: new THREE.Vector3(Math.random() * 4, Math.random() * 4, Math.random() * 4),
+            life: 2.5,
+          });
+        }
+        break;
+      }
+
+      case 'fallen_log': {
+        // 4 cylindrical wood log segments & moss
+        const logGeo = new THREE.CylinderGeometry(0.4, 0.4, 1.3, 8);
+        for (let i = 0; i < 4; i++) {
+          const seg = new THREE.Mesh(logGeo, this.logWoodMat);
+          seg.position.set(pos.x + (Math.random() - 0.5) * 2, pos.y + 0.8, pos.z + (Math.random() - 0.5) * 2);
+          this.scene.add(seg);
+          this.activeDebris.push({
+            mesh: seg,
+            velocity: new THREE.Vector3((Math.random() - 0.5) * 9, 5 + Math.random() * 6, (Math.random() - 0.5) * 9),
+            angularVelocity: new THREE.Vector3(Math.random() * 8, Math.random() * 8, Math.random() * 8),
+            life: 2.8,
+          });
+        }
+        const mossGeo = new THREE.BoxGeometry(0.4, 0.2, 0.4);
+        for (let i = 0; i < 3; i++) {
+          const moss = new THREE.Mesh(mossGeo, this.mossGreenMat);
+          moss.position.set(pos.x + (Math.random() - 0.5), pos.y + 0.6, pos.z + (Math.random() - 0.5));
+          this.scene.add(moss);
+          this.activeDebris.push({
+            mesh: moss,
+            velocity: new THREE.Vector3((Math.random() - 0.5) * 6, 3 + Math.random() * 4, (Math.random() - 0.5) * 6),
+            angularVelocity: new THREE.Vector3(Math.random() * 6, Math.random() * 6, Math.random() * 6),
+            life: 2.2,
+          });
+        }
+        break;
+      }
+
+      case 'stunt_ramp': {
+        const plankGeo = new THREE.BoxGeometry(0.35, 0.18, 1.8);
+        for (let i = 0; i < 4; i++) {
+          const plank = new THREE.Mesh(plankGeo, this.woodMat);
+          plank.position.set(pos.x + (Math.random() - 0.5) * 2, pos.y + 1.2, pos.z + (Math.random() - 0.5) * 2);
+          this.scene.add(plank);
+          this.activeDebris.push({
+            mesh: plank,
+            velocity: new THREE.Vector3((Math.random() - 0.5) * 10, 6 + Math.random() * 6, (Math.random() - 0.5) * 10),
+            angularVelocity: new THREE.Vector3(Math.random() * 9, Math.random() * 9, Math.random() * 9),
+            life: 2.6,
+          });
+        }
+        break;
+      }
+
+      case 'balloon_cluster': {
+        // Multi-colored balloon shards
+        const balloonGeo = new THREE.DodecahedronGeometry(0.4, 0);
+        const mats = [this.balloonRedMat, this.balloonBlueMat, this.balloonPurpleMat, this.foliageMat];
+        for (let i = 0; i < 6; i++) {
+          const shard = new THREE.Mesh(balloonGeo, mats[i % mats.length]);
+          shard.position.set(pos.x + (Math.random() - 0.5) * 1.5, pos.y + 1.2, pos.z + (Math.random() - 0.5) * 1.5);
+          this.scene.add(shard);
+          this.activeDebris.push({
+            mesh: shard,
+            velocity: new THREE.Vector3((Math.random() - 0.5) * 8, 4 + Math.random() * 7, (Math.random() - 0.5) * 8),
+            angularVelocity: new THREE.Vector3(Math.random() * 10, Math.random() * 10, Math.random() * 10),
+            life: 2.0,
+          });
+        }
+        break;
+      }
+
       case 'chicken': {
         // Pop soft white feathers everywhere!
         const featherGeo = new THREE.PlaneGeometry(0.35, 0.5);
@@ -272,7 +416,6 @@ export class WorldGenerator {
       }
 
       case 'mystery_box': {
-        // Shards of purple gift box burst outward with coins!
         const shardGeo = new THREE.BoxGeometry(0.4, 0.4, 0.4);
         for (let i = 0; i < 6; i++) {
           const shard = new THREE.Mesh(shardGeo, this.mysteryShardMat);
@@ -413,8 +556,6 @@ export class WorldGenerator {
       }
 
       case 'cow': {
-        obj.mesh.visible = true; // Comical bounce
-        obj.mesh.position.y += 2.0;
         break;
       }
 
@@ -422,6 +563,22 @@ export class WorldGenerator {
         this.triggerConfetti(pos, 35);
         break;
     }
+  }
+
+  public destroyObject(obj: CollidableObject, notifyHost = true): void {
+    obj.isDestroyed = true;
+    obj.respawnTime = performance.now() + 8500;
+    obj.mesh.visible = false;
+
+    this.triggerDebris(obj.type, obj.position, obj.severity);
+    if (notifyHost && this.onDestroyCallback) {
+      this.onDestroyCallback(obj.type, obj.position, obj.severity);
+    }
+  }
+
+  public setEnabledModules(moduleIds: string[]): void {
+    this.enabledModules = new Set(moduleIds);
+    this.clearAllChunks();
   }
 
   public updateChunks(vehiclePos: THREE.Vector3, density = 1.0): void {
@@ -537,6 +694,23 @@ export class WorldGenerator {
       availableWorlds
     );
 
+    // Auto-inject pluggable dynamic world modules (Traffic Cars, Train Railway, Dense Forest, Stunts, Balloons)
+    for (const mod of BUILTIN_MODULES) {
+      if (this.enabledModules.has(mod.id)) {
+        mod.spawnChunk(
+          chunk,
+          cx,
+          cz,
+          originX,
+          originZ,
+          this.chunkSize,
+          density,
+          rand,
+          registerCollidable
+        );
+      }
+    }
+
     return chunk;
   }
 
@@ -639,7 +813,65 @@ export class WorldGenerator {
         continue;
       }
 
-      // 7. Height check for standard obstacles
+      // 7. Dynamic Module Objects: Traffic Cars (Shatters NPC car when rammed!)
+      if (obj.type === 'traffic_car') {
+        const dist = Math.hypot(carPos.x - obj.position.x, carPos.z - obj.position.z);
+        if (dist < carRadius + obj.radius) {
+          obj.hitTimestamp = now;
+          this.destroyObject(obj);
+          if (onInteractive) onInteractive('creature', undefined, 'honk');
+          onCollision('major');
+        }
+        continue;
+      }
+
+      // 8. Dynamic Module Objects: Choo-Choo Steam Train & Railway
+      if (obj.type === 'train') {
+        const dist = Math.hypot(carPos.x - obj.position.x, carPos.z - obj.position.z);
+        if (dist < carRadius + obj.radius) {
+          obj.hitTimestamp = now;
+          this.destroyObject(obj);
+          if (onInteractive) onInteractive('creature', undefined, 'train_whistle');
+          onCollision('major');
+        }
+        continue;
+      }
+
+      // 9. Dynamic Module Objects: Fallen Logs
+      if (obj.type === 'fallen_log') {
+        const dist = Math.hypot(carPos.x - obj.position.x, carPos.z - obj.position.z);
+        if (dist < carRadius + obj.radius) {
+          obj.hitTimestamp = now;
+          this.destroyObject(obj);
+          onCollision('major');
+        }
+        continue;
+      }
+
+      // 10. Dynamic Module Objects: Stunt Launch Ramps
+      if (obj.type === 'stunt_ramp') {
+        const dist = Math.hypot(carPos.x - obj.position.x, carPos.z - obj.position.z);
+        if (dist < carRadius + obj.radius) {
+          obj.hitTimestamp = now;
+          this.triggerConfetti(obj.position, 25);
+          if (onInteractive) onInteractive('spring');
+        }
+        continue;
+      }
+
+      // 11. Dynamic Module Objects: Balloon Clusters
+      if (obj.type === 'balloon_cluster') {
+        const dist = carPos.distanceTo(obj.position);
+        if (dist < carRadius + obj.radius) {
+          obj.hitTimestamp = now;
+          this.destroyObject(obj);
+          this.triggerConfetti(obj.position, 40);
+          if (onInteractive) onInteractive('coin', 4);
+        }
+        continue;
+      }
+
+      // 12. Height check for standard obstacles
       const dy = carPos.y - obj.position.y;
       if (!isAirVehicle && obj.isAirObject) continue;
       if (Math.abs(dy) > carRadius + obj.radius + 1.5) continue;
@@ -745,14 +977,33 @@ export class WorldGenerator {
       posAttr.needsUpdate = true;
     }
 
-    // 5. Call custom dynamic chunk tick on each active chunk for living world animation!
+    // 5. Animate Coins in 3D: continuous spin & face tilted up 50 deg toward overhead camera!
+    for (let i = 0; i < this.collidables.length; i++) {
+      const obj = this.collidables[i];
+      if (!obj.isDestroyed && obj.type === 'coin') {
+        obj.mesh.rotation.y += delta * 3.2;
+        obj.mesh.rotation.x = 0.85; // ~50 degrees tilt up so overhead camera sees broad face
+        obj.mesh.position.y = 1.0 + Math.sin(elapsed * 4.0 + obj.position.x) * 0.22;
+      }
+    }
+
+    // 6. Tick enabled dynamic modules on each active chunk
+    for (const mod of BUILTIN_MODULES) {
+      if (this.enabledModules.has(mod.id) && mod.tickModule) {
+        for (const [, chunk] of this.activeChunks.entries()) {
+          mod.tickModule(delta, elapsed, carPos, chunk);
+        }
+      }
+    }
+
+    // 7. Call custom dynamic chunk tick on each active chunk for living world animation!
     if (this.currentWorld.tickChunk) {
       for (const [, chunk] of this.activeChunks.entries()) {
         this.currentWorld.tickChunk(chunk, delta, elapsed, carPos);
       }
     }
 
-    // 6. Update confetti particles
+    // 8. Update confetti particles
     if (this.confettiParticles) {
       const { velocities, rotations, life, mesh } = this.confettiParticles;
       const dummy = new THREE.Matrix4();

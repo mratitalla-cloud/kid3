@@ -614,6 +614,111 @@ export class AudioService {
   }
 
   /**
+   * Cartoon car double-beep honk (meep-meep!)
+   */
+  public playHonk(): void {
+    if (!this.ctx) this.init();
+    if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume().catch(() => {});
+    if (!this.ctx || !this.masterGain) return;
+    try {
+      const now = this.ctx.currentTime;
+      [0, 0.16].forEach((delay) => {
+        const osc = this.ctx!.createOscillator();
+        const gain = this.ctx!.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(440, now + delay);
+        gain.gain.setValueAtTime(0.28, now + delay);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.12);
+        osc.connect(gain);
+        gain.connect(this.masterGain!);
+        osc.start(now + delay);
+        osc.stop(now + delay + 0.13);
+      });
+    } catch {
+      // Ignore
+    }
+  }
+
+  /**
+   * Choo-Choo steam train whistle
+   */
+  public playTrainWhistle(): void {
+    if (!this.ctx) this.init();
+    if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume().catch(() => {});
+    if (!this.ctx || !this.masterGain) return;
+    try {
+      const now = this.ctx.currentTime;
+      const freqs = [587.33, 739.99]; // D5 + F#5 chord
+      freqs.forEach((f) => {
+        const osc = this.ctx!.createOscillator();
+        const gain = this.ctx!.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(f, now);
+        osc.frequency.linearRampToValueAtTime(f * 1.05, now + 0.2);
+        osc.frequency.linearRampToValueAtTime(f * 0.98, now + 0.5);
+        gain.gain.setValueAtTime(0.25, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+        osc.connect(gain);
+        gain.connect(this.masterGain!);
+        osc.start(now);
+        osc.stop(now + 0.65);
+      });
+    } catch {
+      // Ignore
+    }
+  }
+
+  /**
+   * Stunt ramp speed whoosh
+   */
+  public playWhoosh(): void {
+    if (!this.ctx) this.init();
+    if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume().catch(() => {});
+    if (!this.ctx || !this.masterGain) return;
+    try {
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(150, now);
+      osc.frequency.exponentialRampToValueAtTime(700, now + 0.25);
+      gain.gain.setValueAtTime(0.3, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+      osc.connect(gain);
+      gain.connect(this.masterGain);
+      osc.start(now);
+      osc.stop(now + 0.4);
+    } catch {
+      // Ignore
+    }
+  }
+
+  /**
+   * Balloon carnival pop
+   */
+  public playPop(): void {
+    if (!this.ctx) this.init();
+    if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume().catch(() => {});
+    if (!this.ctx || !this.masterGain) return;
+    try {
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(800, now);
+      osc.frequency.exponentialRampToValueAtTime(80, now + 0.08);
+      gain.gain.setValueAtTime(0.4, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+      osc.connect(gain);
+      gain.connect(this.masterGain);
+      osc.start(now);
+      osc.stop(now + 0.12);
+    } catch {
+      // Ignore
+    }
+  }
+
+  /**
    * Cheerful background countryside arpeggio loop
    */
   public startBgm(): void {

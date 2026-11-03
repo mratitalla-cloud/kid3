@@ -296,18 +296,25 @@ export const candylandToylandWorld: WorldDefinition = {
 
       for (let c = 0; c < 4; c++) {
         const coinZ = startZ + c * 4.5;
-        const coinGeo = new THREE.CylinderGeometry(0.55, 0.55, 0.14, 16);
-        coinGeo.rotateZ(Math.PI / 2);
-        const coin = new THREE.Mesh(coinGeo, sugarCoinMat);
-        coin.position.set(chunkSize / 2 + offset, 0.9, coinZ);
-        chunk.add(coin);
+        const coinGroup = new THREE.Group();
+        const disc = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.7, 0.35, 16), sugarCoinMat);
+        const star = new THREE.Mesh(
+          new THREE.OctahedronGeometry(0.42, 0),
+          new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xf472b6, emissiveIntensity: 0.5 })
+        );
+        star.position.y = 0.22;
+        star.scale.set(1.1, 0.3, 1.1);
+        coinGroup.add(disc, star);
+        coinGroup.rotation.x = 0.85; // Tilt up toward camera!
+        coinGroup.position.set(chunkSize / 2 + offset, 0.9, coinZ);
+        chunk.add(coinGroup);
 
         registerCollidable(
           `candy_coin_${cx}_${cz}_${c}`,
           'coin',
           new THREE.Vector3(originX + chunkSize / 2 + offset, 0.9, originZ + coinZ),
-          1.4,
-          coin,
+          1.5,
+          coinGroup,
           'minor',
           false,
           undefined,
@@ -376,13 +383,13 @@ export const candylandToylandWorld: WorldDefinition = {
       );
     }
 
-    // 10. PROCEDURAL STARGATE WARP PORTAL
-    if (rand(90) > 0.75 && availableWorldIds.length > 1) {
+    // 10. PROCEDURAL STARGATE WARP PORTAL (High Frequency for Exciting Exploration!)
+    if (rand(90) > 0.35 && availableWorldIds.length > 1) {
       const otherWorlds = availableWorldIds.filter((w) => w !== 'candyland_toyland');
       const targetWorldId = otherWorlds[Math.floor(rand(91) * otherWorlds.length)];
 
-      const portalX = chunkSize / 2 + (rand(92) > 0.5 ? 9.5 : -9.5);
-      const portalZ = 15 + rand(93) * (chunkSize - 30);
+      const portalX = chunkSize / 2 + (rand(92) > 0.6 ? 2.8 : rand(92) < 0.4 ? -2.8 : 0);
+      const portalZ = 12 + rand(93) * (chunkSize - 24);
 
       const portalGroup = new THREE.Group();
       portalGroup.name = 'candy_portal';
