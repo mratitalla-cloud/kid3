@@ -87,15 +87,17 @@ export class VehiclePhysics {
     this.rollAngle = 0;
   }
 
-  public roofHeight = 2.2; // Resting roof clearance when flipped upside down
+  public roofHeight = 2.8; // Resting roof clearance when flipped upside down
 
   public setVehicleModel(vehicleId: string): void {
     if (vehicleId === 'steam_train') {
-      this.roofHeight = 3.3;
-    } else if (vehicleId === 'digger') {
-      this.roofHeight = 2.9;
+      this.roofHeight = 3.6;
+    } else if (vehicleId === 'digger' || vehicleId === 'fire_truck') {
+      this.roofHeight = 3.4;
+    } else if (vehicleId === 'monster_truck' || vehicleId === 'pickup') {
+      this.roofHeight = 3.2;
     } else {
-      this.roofHeight = 2.2;
+      this.roofHeight = 2.8;
     }
   }
 
@@ -346,10 +348,16 @@ export class VehiclePhysics {
       rootGroup.rotation.x = 0;
       if (this.isFlipped) {
         // Roll completely upside down (180 deg / Math.PI) on its roof, and stop!
-        rootGroup.rotation.z = THREE.MathUtils.damp(rootGroup.rotation.z, Math.PI, 12.0, delta);
-        // Lift car by full roof height (2.2m - 3.3m) so roof rests strictly on top of ground with 0 clipping!
-        const restY = Math.max(2.2, this.roofHeight);
-        this.position.y = THREE.MathUtils.damp(this.position.y, restY, 14.0, delta);
+        rootGroup.rotation.z = THREE.MathUtils.damp(rootGroup.rotation.z, Math.PI, 14.0, delta);
+        // Lift car by full roof height (2.8m - 3.6m) so roof rests strictly on top of ground with 0 clipping!
+        const restY = Math.max(2.8, this.roofHeight * this.currentScale);
+        this.position.y = THREE.MathUtils.damp(this.position.y, restY, 16.0, delta);
+        // Absolute floor guard: instantly clamp so car NEVER dips underground for even a single frame
+        if (this.position.y < restY) {
+          this.position.y = restY;
+        }
+        this.verticalSpeed = 0;
+        this.isGrounded = true;
       } else {
         if (!this.isGrounded) {
           this.verticalSpeed -= 28.0 * delta; // Realistic toy gravity
