@@ -311,8 +311,9 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
     motionPacketRef.current.accelZ = Math.max(rawZ, deltaZ);
   }, []);
 
-  // Request motion permissions explicitly
-  const triggerPermissionsRequest = () => {
+  // Request motion permissions explicitly (Prompts iOS dialog FIRST before fullscreen!)
+  const triggerPermissionsRequest = async (): Promise<boolean> => {
+    mobileAudio.unlockSynchronously();
     const DeviceOrientation = window.DeviceOrientationEvent as unknown as {
       requestPermission?: () => Promise<'granted' | 'denied'>;
     };
@@ -320,36 +321,41 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
       requestPermission?: () => Promise<'granted' | 'denied'>;
     };
 
+    let granted = false;
     if (typeof DeviceOrientation?.requestPermission === 'function') {
-      DeviceOrientation.requestPermission()
-        .then((perm) => {
-          if (perm === 'granted') {
-            window.addEventListener('deviceorientation', handleDeviceOrientation, true);
-            window.addEventListener('deviceorientationabsolute', handleDeviceOrientation, true);
-            setHasMotionSensor(true);
-            setShowForcePermissionModal(false);
-            mobileAudio.playJump();
-          }
-        })
-        .catch(() => {});
+      try {
+        const perm = await DeviceOrientation.requestPermission();
+        if (perm === 'granted') {
+          window.addEventListener('deviceorientation', handleDeviceOrientation, true);
+          window.addEventListener('deviceorientationabsolute', handleDeviceOrientation, true);
+          setHasMotionSensor(true);
+          setShowForcePermissionModal(false);
+          mobileAudio.playJump();
+          granted = true;
+        }
+      } catch (err) {
+        console.warn('Orientation permission prompt:', err);
+      }
     } else {
       window.addEventListener('deviceorientation', handleDeviceOrientation, true);
       window.addEventListener('deviceorientationabsolute', handleDeviceOrientation, true);
       setHasMotionSensor(true);
       setShowForcePermissionModal(false);
+      granted = true;
     }
 
     if (typeof DeviceMotion?.requestPermission === 'function') {
-      DeviceMotion.requestPermission()
-        .then((perm) => {
-          if (perm === 'granted') {
-            window.addEventListener('devicemotion', handleDeviceMotion, true);
-          }
-        })
-        .catch(() => {});
+      try {
+        const mPerm = await DeviceMotion.requestPermission();
+        if (mPerm === 'granted') {
+          window.addEventListener('devicemotion', handleDeviceMotion, true);
+        }
+      } catch {}
     } else {
       window.addEventListener('devicemotion', handleDeviceMotion, true);
     }
+
+    return granted;
   };
 
   // Test sound and rumble on demand
@@ -422,35 +428,68 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
     await requestWakeLock();
   };
 
-  // Listen for video fullscreen transitions on iOS Safari
+  // Aggressively prevent video pausing and handle fullscreen lifecycle
   useEffect(() => {
     const video = videoRef.current as any;
     if (!video) return;
-    const onEnterFs = () => setIsFullscreen(true);
-    const onEndFs = () => setIsFullscreen(false);
+
+    const resumePlaying = () => {
+      if (video.paused) {
+        video.play().catch(() => {});
+      }
+    };
+
+    const onEnterFs = () => {
+      setIsFullscreen(true);
+      resumePlaying();
+    };
+
+    const onEndFs = () => {
+      setIsFullscreen(false);
+      resumePlaying();
+    };
+
     video.addEventListener('webkitbeginfullscreen', onEnterFs);
     video.addEventListener('webkitendfullscreen', onEndFs);
+    video.addEventListener('pause', resumePlaying);
+    video.addEventListener('waiting', resumePlaying);
+    video.addEventListener('stalled', resumePlaying);
+    video.addEventListener('suspend', resumePlaying);
+    video.addEventListener('seeking', resumePlaying);
+    video.addEventListener('seeked', resumePlaying);
+
     return () => {
       video.removeEventListener('webkitbeginfullscreen', onEnterFs);
       video.removeEventListener('webkitendfullscreen', onEndFs);
+      video.removeEventListener('pause', resumePlaying);
+      video.removeEventListener('waiting', resumePlaying);
+      video.removeEventListener('stalled', resumePlaying);
+      video.removeEventListener('suspend', resumePlaying);
+      video.removeEventListener('seeking', resumePlaying);
+      video.removeEventListener('seeked', resumePlaying);
     };
   }, []);
 
-  // Tap-to-Start Permission Handshake & Fullscreen YouTube-style Lock
+  // Tap-to-Start: Request permissions FIRST, then lock into fullscreen
   const handleTapToStart = async () => {
-    // 1. Immediately and synchronously invoke Fullscreen API on direct user gesture
-    openFullscreen();
+    // 1. First ensure motion sensor permissions are requested & allowed
+    if (!hasMotionSensor) {
+      await triggerPermissionsRequest();
+    }
 
     // 2. Synchronously unlock Web Audio on direct user tap
     mobileAudio.unlockSynchronously();
 
-    // 3. Audio Activation
+    // 3. Audio & Engine Activation
     mobileAudio.setVolume(0.9);
     mobileAudio.startEngine();
     mobileAudio.startBgm();
     HapticsService.trigger('major', true, 1.2);
 
-    // 4. Orientation & Wake Lock
+    // 4. Immediately enter Fullscreen and Lock
+    openFullscreen();
+
+    // 5. Orientation & Wake Lock
     try {
       if (screen.orientation && 'lock' in screen.orientation) {
         (screen.orientation as any).lock('portrait').catch(() => {});
@@ -459,9 +498,6 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
       // Ignore
     }
     requestWakeLock();
-
-    // 5. Trigger motion sensors
-    triggerPermissionsRequest();
 
     // 6. Browser History Lock: Trap mobile swipe-back and hardware back buttons
     window.history.pushState({ app: 'toddler_drive', lock: 1 }, '', window.location.href);
@@ -586,6 +622,11 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
     const tick = () => {
       const delta = Math.min(0.05, clock.getDelta());
       const elapsed = clock.getElapsedTime();
+
+      // Unpausable video guard: resume instantly every frame if user or child clicks pause
+      if (videoRef.current && videoRef.current.paused) {
+        videoRef.current.play().catch(() => {});
+      }
 
       // Read real-time position from host or estimate smoothly
       const s = serverVehiclePosRef.current;
@@ -797,21 +838,44 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
           </div>
 
           <div className="w-full max-w-xs space-y-2.5">
+            {/* Step 1: Ensure steering sensors & sound are allowed FIRST before fullscreen! */}
+            {!hasMotionSensor && (
+              <div className="p-3 bg-amber-400 text-slate-950 rounded-2xl shadow-xl flex flex-col items-center text-center space-y-1.5 border-2 border-white animate-pulse">
+                <div className="flex items-center gap-1.5 font-black text-xs">
+                  <Compass className="w-4 h-4 text-slate-900 animate-spin" />
+                  <span>STEP 1: ALLOW SENSORS FIRST</span>
+                </div>
+                <p className="text-[10px] text-slate-900 font-semibold leading-tight">
+                  Tap below so iOS prompts you to allow steering sensors before entering locked fullscreen!
+                </p>
+                <button
+                  type="button"
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    await triggerPermissionsRequest();
+                  }}
+                  className="w-full py-2 px-3 bg-slate-950 text-white rounded-xl font-black text-xs shadow-md active:scale-95 transition-transform"
+                >
+                  🧭 ALLOW MOTION SENSORS NOW
+                </button>
+              </div>
+            )}
+
             {/* Primary Direct Fullscreen Trigger Button */}
             <button
               id="fullscreen-btn"
               type="button"
               onClick={handleTapToStart}
-              className="w-full py-4 px-5 bg-white text-slate-900 rounded-3xl shadow-2xl flex flex-col items-center text-center transform active:scale-95 transition-transform border-4 border-amber-300"
+              className={`w-full py-4 px-5 bg-white text-slate-900 rounded-3xl shadow-2xl flex flex-col items-center text-center transform active:scale-95 transition-transform border-4 ${hasMotionSensor ? 'border-emerald-400' : 'border-amber-300'}`}
             >
-              <div className="w-12 h-12 bg-rose-600 rounded-2xl flex items-center justify-center text-white shadow-lg mb-1.5 shadow-rose-500/40">
+              <div className={`w-12 h-12 ${hasMotionSensor ? 'bg-emerald-600 shadow-emerald-500/40' : 'bg-rose-600 shadow-rose-500/40'} rounded-2xl flex items-center justify-center text-white shadow-lg mb-1.5`}>
                 <Maximize2 className="w-7 h-7 animate-pulse" />
               </div>
-              <span className="text-xl font-black tracking-wide text-rose-600">
-                PLAY FULLSCREEN 🎮
+              <span className={`text-xl font-black tracking-wide ${hasMotionSensor ? 'text-emerald-600' : 'text-rose-600'}`}>
+                {hasMotionSensor ? 'LOCK FULLSCREEN & PLAY 🎮' : 'PLAY FULLSCREEN 🎮'}
               </span>
               <span className="text-[11px] text-slate-600 mt-0.5 font-medium">
-                Launches Fullscreen & hides Safari address bar
+                {hasMotionSensor ? 'Sensors Allowed! Tap to lock full screen' : 'Allows sensors & locks edge-to-edge'}
               </span>
             </button>
 
@@ -879,9 +943,62 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
       {/* PHASE 2: Live In-Game HUD & Top Status Bar */}
       {hasStarted && (
         <>
+          {/* LOCKED FULLSCREEN TRAP OVERLAY: When toddler or user drops out of fullscreen,
+              any tap anywhere on screen immediately re-locks back into edge-to-edge video player! */}
+          {!isFullscreen && (
+            <div
+              onClick={(e) => {
+                e.stopPropagation();
+                openFullscreen();
+              }}
+              onTouchStart={(e) => {
+                e.stopPropagation();
+                openFullscreen();
+              }}
+              className="fixed inset-0 z-40 bg-slate-950/90 backdrop-blur-md flex flex-col items-center justify-between p-6 text-white text-center cursor-pointer select-none touch-none"
+            >
+              <div className="pt-8 space-y-2 pointer-events-none">
+                <div className="w-16 h-16 bg-rose-600 rounded-3xl flex items-center justify-center mx-auto shadow-2xl animate-bounce shadow-rose-500/50">
+                  <Maximize2 className="w-8 h-8 text-white animate-pulse" />
+                </div>
+                <h2 className="text-2xl font-black tracking-tight text-white">
+                  FULLSCREEN LOCKED 🔒
+                </h2>
+                <p className="text-xs font-bold text-amber-300 max-w-xs mx-auto">
+                  Tap ANYWHERE on screen to re-lock into Fullscreen!
+                </p>
+              </div>
 
-      {/* Top Status Bar with Sensor Diagnostics & World Name */}
-      <div className="w-full px-4 pt-3 flex items-center justify-between z-20 pointer-events-none">
+              <div className="w-full max-w-xs space-y-3 pointer-events-none">
+                <div className="w-full py-5 px-6 bg-rose-600 text-white font-black text-lg rounded-3xl shadow-2xl flex items-center justify-center gap-2 border-2 border-rose-400 animate-pulse">
+                  <Tv className="w-6 h-6" />
+                  <span>TAP TO RESUME FULLSCREEN 📺</span>
+                </div>
+                <p className="text-[11px] text-white/80">
+                  Kid cannot exit or click browser buttons while locked.
+                </p>
+              </div>
+
+              {/* Toddler-Proof Unlock for Parents (Hold 3 seconds) */}
+              <div
+                onClick={(e) => e.stopPropagation()}
+                onPointerDown={handleLockPointerDown}
+                onPointerUp={handleLockPointerUp}
+                onPointerCancel={handleLockPointerUp}
+                onTouchStart={handleLockPointerDown}
+                onTouchEnd={handleLockPointerUp}
+                className="pb-4 flex items-center justify-center gap-2 text-white/80 hover:text-white cursor-pointer px-4 py-2 rounded-2xl bg-white/10 backdrop-blur-sm pointer-events-auto active:scale-95 transition-transform"
+              >
+                <Lock className="w-4 h-4 text-amber-400" />
+                <span className="text-xs font-bold">
+                  {lockProgress > 0 ? `Holding to unlock... ${Math.round(lockProgress)}%` : 'Parents: Hold 3s to Unlock Menu'}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Top Status Bar with Sensor Diagnostics & World Name */}
+          <div className="w-full px-4 pt-3 flex items-center justify-between z-20 pointer-events-none">
         <div className="flex items-center gap-2">
           {/* Fullscreen re-lock button if browser dropped out of fullscreen */}
           {!isFullscreen && (
