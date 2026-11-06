@@ -200,7 +200,7 @@ export const trainRailwayModule: WorldModule = {
           'major',
           false,
           undefined,
-          { sound: 'train_whistle' }
+          { sound: 'train_whistle', vehicleId: 'steam_train' }
         );
       }
 

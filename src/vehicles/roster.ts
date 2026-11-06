@@ -548,6 +548,362 @@ function renderDiggerSvg(pri: string, acc: string): string {
   `;
 }
 
+function renderFireTruckSvg(pri: string, acc: string): string {
+  return `
+    <svg viewBox="0 0 200 340" class="w-full h-full drop-shadow-2xl">
+      <ellipse cx="100" cy="170" rx="70" ry="130" fill="rgba(0,0,0,0.15)" />
+      <rect x="20" y="40" width="22" height="46" rx="6" fill="#1e293b" />
+      <rect x="158" y="40" width="22" height="46" rx="6" fill="#1e293b" />
+      <rect x="20" y="160" width="22" height="46" rx="6" fill="#1e293b" />
+      <rect x="158" y="160" width="22" height="46" rx="6" fill="#1e293b" />
+      <rect x="20" y="240" width="22" height="46" rx="6" fill="#1e293b" />
+      <rect x="158" y="240" width="22" height="46" rx="6" fill="#1e293b" />
+      <rect x="34" y="25" width="132" height="280" rx="18" fill="${pri}" />
+      <rect x="42" y="32" width="116" height="65" rx="8" fill="#f8fafc" />
+      <rect x="48" y="40" width="104" height="26" rx="4" fill="#38bdf8" opacity="0.85" />
+      <circle cx="68" cy="18" r="8" fill="#ef4444" />
+      <circle cx="132" cy="18" r="8" fill="#3b82f6" />
+      <!-- Roof Ladder -->
+      <rect x="76" y="115" width="48" height="170" rx="4" fill="#e2e8f0" stroke="#64748b" stroke-width="4" />
+      <line x1="76" y1="145" x2="124" y2="145" stroke="#64748b" stroke-width="4" />
+      <line x1="76" y1="175" x2="124" y2="175" stroke="#64748b" stroke-width="4" />
+      <line x1="76" y1="205" x2="124" y2="205" stroke="#64748b" stroke-width="4" />
+      <line x1="76" y1="235" x2="124" y2="235" stroke="#64748b" stroke-width="4" />
+      <line x1="76" y1="265" x2="124" y2="265" stroke="#64748b" stroke-width="4" />
+      <circle cx="100" cy="100" r="14" fill="${acc}" />
+    </svg>
+  `;
+}
+
+function renderPoliceSvg(pri: string, acc: string): string {
+  return `
+    <svg viewBox="0 0 200 320" class="w-full h-full drop-shadow-2xl">
+      <ellipse cx="100" cy="165" rx="75" ry="120" fill="rgba(0,0,0,0.15)" />
+      <rect x="18" y="45" width="22" height="48" rx="6" fill="#1e293b" />
+      <rect x="160" y="45" width="22" height="48" rx="6" fill="#1e293b" />
+      <rect x="18" y="215" width="22" height="48" rx="6" fill="#1e293b" />
+      <rect x="160" y="215" width="22" height="48" rx="6" fill="#1e293b" />
+      <rect x="36" y="30" width="128" height="250" rx="30" fill="${pri}" />
+      <rect x="44" y="90" width="112" height="110" rx="12" fill="#ffffff" />
+      <path d="M 46 110 Q 100 90 154 110 L 148 135 Q 100 120 52 135 Z" fill="#38bdf8" opacity="0.85" />
+      <!-- Police Lightbar -->
+      <rect x="65" y="145" width="32" height="16" rx="4" fill="#ef4444" />
+      <rect x="103" y="145" width="32" height="16" rx="4" fill="#3b82f6" />
+      <rect x="94" y="147" width="12" height="12" rx="2" fill="#f8fafc" />
+      <text x="100" y="240" font-family="sans-serif" font-weight="900" font-size="16" fill="#ffffff" text-anchor="middle">POLICE</text>
+    </svg>
+  `;
+}
+
+function renderIceCreamSvg(pri: string, acc: string): string {
+  return `
+    <svg viewBox="0 0 200 330" class="w-full h-full drop-shadow-2xl">
+      <ellipse cx="100" cy="165" rx="75" ry="125" fill="rgba(0,0,0,0.15)" />
+      <rect x="18" y="45" width="22" height="48" rx="6" fill="#1e293b" />
+      <rect x="160" y="45" width="22" height="48" rx="6" fill="#1e293b" />
+      <rect x="18" y="225" width="22" height="48" rx="6" fill="#1e293b" />
+      <rect x="160" y="225" width="22" height="48" rx="6" fill="#1e293b" />
+      <rect x="34" y="25" width="132" height="275" rx="28" fill="${pri}" />
+      <rect x="42" y="30" width="116" height="70" rx="10" fill="#fbcfe8" />
+      <!-- Striped awning -->
+      <path d="M 42 120 L 158 120 L 158 175 L 42 175 Z" fill="${acc}" />
+      <line x1="62" y1="120" x2="62" y2="175" stroke="#ffffff" stroke-width="8" />
+      <line x1="98" y1="120" x2="98" y2="175" stroke="#ffffff" stroke-width="8" />
+      <line x1="134" y1="120" x2="134" y2="175" stroke="#ffffff" stroke-width="8" />
+      <!-- Giant Ice Cream Cone on Roof -->
+      <circle cx="100" cy="225" r="26" fill="#f43f5e" />
+      <circle cx="100" cy="215" r="20" fill="#fef08a" />
+      <polygon points="100,270 82,230 118,230" fill="#d97706" />
+    </svg>
+  `;
+}
+
+function renderMonsterTruckSvg(pri: string, acc: string): string {
+  return `
+    <svg viewBox="0 0 220 320" class="w-full h-full drop-shadow-2xl">
+      <ellipse cx="110" cy="160" rx="95" ry="130" fill="rgba(0,0,0,0.15)" />
+      <!-- Huge Monster Wheels -->
+      <rect x="8" y="30" width="40" height="65" rx="10" fill="#09090b" stroke="#3f3f46" stroke-width="4" />
+      <rect x="172" y="30" width="40" height="65" rx="10" fill="#09090b" stroke="#3f3f46" stroke-width="4" />
+      <rect x="8" y="205" width="40" height="65" rx="10" fill="#09090b" stroke="#3f3f46" stroke-width="4" />
+      <rect x="172" y="205" width="40" height="65" rx="10" fill="#09090b" stroke="#3f3f46" stroke-width="4" />
+      <!-- Body -->
+      <rect x="45" y="45" width="130" height="220" rx="22" fill="${pri}" />
+      <polygon points="110,50 65,115 155,115" fill="${acc}" opacity="0.9" />
+      <!-- Roll cage -->
+      <rect x="60" y="125" width="100" height="85" rx="8" fill="#18181b" stroke="#a1a1aa" stroke-width="6" />
+      <rect x="68" y="132" width="84" height="30" rx="4" fill="#a855f7" opacity="0.6" />
+      <!-- Huge Exhaust Pipes -->
+      <circle cx="65" cy="245" r="8" fill="#71717a" stroke="#ffffff" stroke-width="3" />
+      <circle cx="155" cy="245" r="8" fill="#71717a" stroke="#ffffff" stroke-width="3" />
+    </svg>
+  `;
+}
+
+/**
+ * 5. Big Red Fire Truck
+ */
+function createFireTruckMesh(): VehicleMeshBundle {
+  const root = new THREE.Group();
+  root.name = 'FireTruck';
+
+  const truckGroup = new THREE.Group();
+  truckGroup.rotation.y = Math.PI;
+  root.add(truckGroup);
+
+  const redMat = new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.3, metalness: 0.2 });
+  const whiteMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.2 });
+  const silverMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.15, metalness: 0.85 });
+  const glassMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.1, transparent: true, opacity: 0.7 });
+  const sirenRedMat = new THREE.MeshStandardMaterial({ color: 0xef4444, emissive: 0xef4444, emissiveIntensity: 1.0 });
+  const sirenBlueMat = new THREE.MeshStandardMaterial({ color: 0x3b82f6, emissive: 0x3b82f6, emissiveIntensity: 1.0 });
+  const tireMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.85 });
+
+  // Cab & Body
+  const body = new THREE.Mesh(new THREE.BoxGeometry(2.3, 1.4, 4.8), redMat);
+  body.position.set(0, 1.1, 0);
+  body.castShadow = true;
+  truckGroup.add(body);
+
+  const cabTop = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.5, 1.8), whiteMat);
+  cabTop.position.set(0, 1.95, -1.3);
+  cabTop.castShadow = true;
+  truckGroup.add(cabTop);
+
+  // Windshield
+  const shield = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.7, 0.1), glassMat);
+  shield.position.set(0, 1.5, -2.41);
+  truckGroup.add(shield);
+
+  // Dual Sirens
+  const sRed = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.25, 12), sirenRedMat);
+  sRed.position.set(-0.6, 2.3, -1.3);
+  const sBlue = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.25, 12), sirenBlueMat);
+  sBlue.position.set(0.6, 2.3, -1.3);
+  truckGroup.add(sRed, sBlue);
+
+  // Roof ladder
+  const ladder = new THREE.Group();
+  ladder.position.set(0, 2.0, 0.7);
+  const railGeo = new THREE.BoxGeometry(0.1, 0.12, 2.8);
+  const railL = new THREE.Mesh(railGeo, silverMat);
+  railL.position.x = -0.45;
+  const railR = new THREE.Mesh(railGeo, silverMat);
+  railR.position.x = 0.45;
+  ladder.add(railL, railR);
+  for (let z = -1.2; z <= 1.2; z += 0.4) {
+    const rung = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.9, 8), silverMat);
+    rung.rotation.z = Math.PI / 2;
+    rung.position.set(0, 0, z);
+    ladder.add(rung);
+  }
+  truckGroup.add(ladder);
+
+  // 6 Wheels
+  const wheels: THREE.Object3D[] = [];
+  const wGeo = new THREE.CylinderGeometry(0.5, 0.5, 0.38, 16);
+  [
+    [-1.25, 0.5, -1.6], [1.25, 0.5, -1.6],
+    [-1.25, 0.5, 0.6],  [1.25, 0.5, 0.6],
+    [-1.25, 0.5, 1.8],  [1.25, 0.5, 1.8],
+  ].forEach(([x, y, z]) => {
+    const w = new THREE.Mesh(wGeo, tireMat);
+    w.rotation.z = Math.PI / 2;
+    w.position.set(x, y, z);
+    w.castShadow = true;
+    truckGroup.add(w);
+    wheels.push(w);
+  });
+
+  return { root, wheels };
+}
+
+/**
+ * 6. Speedy Police Cruiser
+ */
+function createPoliceCruiserMesh(): VehicleMeshBundle {
+  const root = new THREE.Group();
+  root.name = 'PoliceCruiser';
+
+  const carGroup = new THREE.Group();
+  carGroup.rotation.y = Math.PI;
+  root.add(carGroup);
+
+  const blackMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.3, metalness: 0.2 });
+  const whiteMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.2 });
+  const tireMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.85 });
+  const glassMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.1, transparent: true, opacity: 0.7 });
+  const sirenRedMat = new THREE.MeshStandardMaterial({ color: 0xef4444, emissive: 0xef4444, emissiveIntensity: 1.2 });
+  const sirenBlueMat = new THREE.MeshStandardMaterial({ color: 0x3b82f6, emissive: 0x3b82f6, emissiveIntensity: 1.2 });
+  const chromeMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.1, metalness: 0.9 });
+
+  // Chassis
+  const body = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.75, 4.2), blackMat);
+  body.position.set(0, 0.7, 0);
+  body.castShadow = true;
+  carGroup.add(body);
+
+  // White Doors / Cabin
+  const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.65, 2.0), whiteMat);
+  cabin.position.set(0, 1.35, 0.1);
+  cabin.castShadow = true;
+  carGroup.add(cabin);
+
+  // Windshield
+  const shield = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.6, 0.1), glassMat);
+  shield.position.set(0, 1.35, -0.9);
+  shield.rotation.x = 0.3;
+  carGroup.add(shield);
+
+  // Front Push Bumper (Bullbar)
+  const bullbar = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.5, 0.25), chromeMat);
+  bullbar.position.set(0, 0.65, -2.15);
+  carGroup.add(bullbar);
+
+  // Lightbar
+  const barRed = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.18, 0.3), sirenRedMat);
+  barRed.position.set(-0.45, 1.75, 0.1);
+  const barBlue = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.18, 0.3), sirenBlueMat);
+  barBlue.position.set(0.45, 1.75, 0.1);
+  carGroup.add(barRed, barBlue);
+
+  // Wheels
+  const wheels: THREE.Object3D[] = [];
+  const wGeo = new THREE.CylinderGeometry(0.46, 0.46, 0.34, 16);
+  [[-1.15, 0.46, -1.2], [1.15, 0.46, -1.2], [-1.15, 0.46, 1.2], [1.15, 0.46, 1.2]].forEach(([x, y, z]) => {
+    const w = new THREE.Mesh(wGeo, tireMat);
+    w.rotation.z = Math.PI / 2;
+    w.position.set(x, y, z);
+    w.castShadow = true;
+    carGroup.add(w);
+    wheels.push(w);
+  });
+
+  return { root, wheels };
+}
+
+/**
+ * 7. Sweet Swirl Ice Cream Truck
+ */
+function createIceCreamVanMesh(): VehicleMeshBundle {
+  const root = new THREE.Group();
+  root.name = 'IceCreamVan';
+
+  const vanGroup = new THREE.Group();
+  vanGroup.rotation.y = Math.PI;
+  root.add(vanGroup);
+
+  const pinkMat = new THREE.MeshStandardMaterial({ color: 0xf472b6, roughness: 0.3 });
+  const whiteMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.2 });
+  const coneMat = new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.6 });
+  const iceRedMat = new THREE.MeshStandardMaterial({ color: 0xf43f5e, roughness: 0.3 });
+  const iceYellowMat = new THREE.MeshStandardMaterial({ color: 0xfef08a, roughness: 0.3 });
+  const tireMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.85 });
+  const glassMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.1, transparent: true, opacity: 0.7 });
+
+  // Main Van Body
+  const body = new THREE.Mesh(new THREE.BoxGeometry(2.3, 1.5, 4.4), whiteMat);
+  body.position.set(0, 1.15, 0);
+  body.castShadow = true;
+  vanGroup.add(body);
+
+  const lowerPink = new THREE.Mesh(new THREE.BoxGeometry(2.35, 0.6, 4.45), pinkMat);
+  lowerPink.position.set(0, 0.7, 0);
+  vanGroup.add(lowerPink);
+
+  // Front windshield
+  const shield = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.7, 0.1), glassMat);
+  shield.position.set(0, 1.5, -2.21);
+  vanGroup.add(shield);
+
+  // Giant 3D Ice Cream Cone on Roof!
+  const roofCone = new THREE.Group();
+  roofCone.position.set(0, 2.2, 0.3);
+  const cone = new THREE.Mesh(new THREE.ConeGeometry(0.5, 1.2, 16), coneMat);
+  cone.rotation.x = Math.PI;
+  roofCone.add(cone);
+  const scoop1 = new THREE.Mesh(new THREE.SphereGeometry(0.55, 16, 16), iceRedMat);
+  scoop1.position.y = 0.6;
+  const scoop2 = new THREE.Mesh(new THREE.SphereGeometry(0.42, 16, 16), iceYellowMat);
+  scoop2.position.y = 1.2;
+  roofCone.add(scoop1, scoop2);
+  vanGroup.add(roofCone);
+
+  // Wheels
+  const wheels: THREE.Object3D[] = [];
+  const wGeo = new THREE.CylinderGeometry(0.46, 0.46, 0.34, 16);
+  [[-1.2, 0.46, -1.3], [1.2, 0.46, -1.3], [-1.2, 0.46, 1.3], [1.2, 0.46, 1.3]].forEach(([x, y, z]) => {
+    const w = new THREE.Mesh(wGeo, tireMat);
+    w.rotation.z = Math.PI / 2;
+    w.position.set(x, y, z);
+    w.castShadow = true;
+    vanGroup.add(w);
+    wheels.push(w);
+  });
+
+  return { root, wheels };
+}
+
+/**
+ * 8. Thunder Monster Truck
+ */
+function createMonsterTruckMesh(): VehicleMeshBundle {
+  const root = new THREE.Group();
+  root.name = 'MonsterTruck';
+
+  const truckGroup = new THREE.Group();
+  truckGroup.rotation.y = Math.PI;
+  root.add(truckGroup);
+
+  const purpleMat = new THREE.MeshStandardMaterial({ color: 0x9333ea, roughness: 0.25, metalness: 0.4 });
+  const neonGreenMat = new THREE.MeshStandardMaterial({ color: 0x22c55e, roughness: 0.2, metalness: 0.3 });
+  const metalMat = new THREE.MeshStandardMaterial({ color: 0x52525b, roughness: 0.4, metalness: 0.8 });
+  const bigTireMat = new THREE.MeshStandardMaterial({ color: 0x09090b, roughness: 0.9 });
+  const rimMat = new THREE.MeshStandardMaterial({ color: 0x22c55e, roughness: 0.3, metalness: 0.6 });
+
+  // Elevated Chassis
+  const subframe = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.5, 3.2), metalMat);
+  subframe.position.set(0, 0.8, 0);
+  truckGroup.add(subframe);
+
+  const body = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.0, 3.8), purpleMat);
+  body.position.set(0, 1.6, 0);
+  body.castShadow = true;
+  truckGroup.add(body);
+
+  const hoodFlame = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.15, 1.5), neonGreenMat);
+  hoodFlame.position.set(0, 2.12, -0.9);
+  truckGroup.add(hoodFlame);
+
+  // Heavy Rollcage
+  const rollGeo = new THREE.CylinderGeometry(0.08, 0.08, 2.0, 8);
+  const rollL = new THREE.Mesh(rollGeo, metalMat);
+  rollL.position.set(-0.95, 2.2, 0.4);
+  const rollR = new THREE.Mesh(rollGeo, metalMat);
+  rollR.position.set(0.95, 2.2, 0.4);
+  truckGroup.add(rollL, rollR);
+
+  // Huge Monster Wheels
+  const wheels: THREE.Object3D[] = [];
+  const bigWheelGeo = new THREE.CylinderGeometry(0.85, 0.85, 0.65, 16);
+  const bigRimGeo = new THREE.CylinderGeometry(0.45, 0.45, 0.68, 16);
+
+  [[-1.4, 0.85, -1.4], [1.4, 0.85, -1.4], [-1.4, 0.85, 1.4], [1.4, 0.85, 1.4]].forEach(([x, y, z]) => {
+    const wGroup = new THREE.Group();
+    wGroup.position.set(x, y, z);
+    const tire = new THREE.Mesh(bigWheelGeo, bigTireMat);
+    tire.rotation.z = Math.PI / 2;
+    tire.castShadow = true;
+    const rim = new THREE.Mesh(bigRimGeo, rimMat);
+    rim.rotation.z = Math.PI / 2;
+    wGroup.add(tire, rim);
+    truckGroup.add(wGroup);
+    wheels.push(wGroup);
+  });
+
+  return { root, wheels };
+}
+
 export const BUILTIN_VEHICLES: VehicleItem[] = [
   {
     id: 'roadster',
@@ -592,6 +948,50 @@ export const BUILTIN_VEHICLES: VehicleItem[] = [
     accentColor: '#ca8a04',
     create3D: createDiggerMesh,
     renderTopDownSvg: renderDiggerSvg,
+  },
+  {
+    id: 'fire_truck',
+    name: 'Big Red Fire Engine',
+    subtitle: 'Rescue Fire Engine',
+    type: 'ground',
+    baseSpeed: 11,
+    primaryColor: '#dc2626',
+    accentColor: '#f8fafc',
+    create3D: createFireTruckMesh,
+    renderTopDownSvg: renderFireTruckSvg,
+  },
+  {
+    id: 'police_cruiser',
+    name: 'Speedy Police Patrol',
+    subtitle: 'Highway Patrol Cruiser',
+    type: 'ground',
+    baseSpeed: 13,
+    primaryColor: '#0f172a',
+    accentColor: '#3b82f6',
+    create3D: createPoliceCruiserMesh,
+    renderTopDownSvg: renderPoliceSvg,
+  },
+  {
+    id: 'ice_cream_van',
+    name: 'Sweet Swirl Ice Cream',
+    subtitle: 'Delicious Melody Van',
+    type: 'ground',
+    baseSpeed: 9,
+    primaryColor: '#f472b6',
+    accentColor: '#fef08a',
+    create3D: createIceCreamVanMesh,
+    renderTopDownSvg: renderIceCreamSvg,
+  },
+  {
+    id: 'monster_truck',
+    name: 'Thunder Monster Truck',
+    subtitle: 'Big Wheel Jumper',
+    type: 'ground',
+    baseSpeed: 12,
+    primaryColor: '#9333ea',
+    accentColor: '#22c55e',
+    create3D: createMonsterTruckMesh,
+    renderTopDownSvg: renderMonsterTruckSvg,
   },
 ];
 

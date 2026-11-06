@@ -44,6 +44,7 @@ interface ParentPanelProps {
   onForceRequestPermissions: () => void;
   currentWorldId: string;
   onSelectWorld: (worldId: string) => void;
+  onSelectVehicle?: (vehicleId: string) => void;
 }
 
 export const ParentPanel: React.FC<ParentPanelProps> = ({
@@ -59,6 +60,7 @@ export const ParentPanel: React.FC<ParentPanelProps> = ({
   onForceRequestPermissions,
   currentWorldId,
   onSelectWorld,
+  onSelectVehicle,
 }) => {
   const [activeTab, setActiveTab] = useState<'calibration' | 'worlds' | 'modules' | 'vehicles' | 'audio' | 'environment'>('calibration');
   const [customJsCode, setCustomJsCode] = useState('');
@@ -274,29 +276,69 @@ export const ParentPanel: React.FC<ParentPanelProps> = ({
 
               {/* Sliders & Thresholds */}
               <div className="space-y-4">
-                {/* Auto-Cruise Setting Requested by User */}
-                <div className="p-3 bg-indigo-50/70 dark:bg-indigo-950/40 rounded-xl border border-indigo-200 dark:border-indigo-800">
-                  <div className="flex items-center justify-between mb-2">
+                {/* Driving Mode Selector: Auto-Cruise vs Physical Phone Push */}
+                <div className="p-4 bg-indigo-50/70 dark:bg-indigo-950/40 rounded-xl border border-indigo-200 dark:border-indigo-800 space-y-3">
+                  <div className="flex items-center justify-between">
                     <div>
                       <div className="text-xs font-bold text-indigo-950 dark:text-indigo-200">
-                        Auto-Cruise Drive Mode
+                        Driving Control Mode
                       </div>
                       <div className="text-[11px] text-indigo-700 dark:text-indigo-300">
-                        Car drives forward at a steady speed. Pushing phone on table gives a temporary boost!
+                        Choose whether the car auto-cruises or responds directly to physical forward/back pushes.
                       </div>
                     </div>
-                    <input
-                      type="checkbox"
-                      checked={settings.autoCruise}
-                      onChange={(e) =>
-                        onUpdateSettings({ ...settings, autoCruise: e.target.checked })
-                      }
-                      className="w-5 h-5 accent-indigo-600 rounded"
-                    />
                   </div>
 
-                  {settings.autoCruise && (
-                    <div className="mt-3 pt-2 border-t border-indigo-200/60 dark:border-indigo-800/60">
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onUpdateSettings({
+                          ...settings,
+                          drivingMode: 'autoCruise',
+                          autoCruise: true,
+                        })
+                      }
+                      className={`p-2.5 rounded-lg text-xs font-bold text-left border transition-all flex flex-col gap-1 ${
+                        settings.drivingMode !== 'phonePush'
+                          ? 'bg-indigo-600 text-white border-indigo-700 shadow-sm'
+                          : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700 hover:bg-slate-50'
+                      }`}
+                    >
+                      <span className="flex items-center gap-1.5 font-black">
+                        🚗 Auto-Cruise
+                      </span>
+                      <span className="text-[10px] font-normal opacity-90 leading-tight">
+                        Steady smooth speed hands-free. Toddler only needs to steer!
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onUpdateSettings({
+                          ...settings,
+                          drivingMode: 'phonePush',
+                          autoCruise: false,
+                        })
+                      }
+                      className={`p-2.5 rounded-lg text-xs font-bold text-left border transition-all flex flex-col gap-1 ${
+                        settings.drivingMode === 'phonePush'
+                          ? 'bg-indigo-600 text-white border-indigo-700 shadow-sm'
+                          : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700 hover:bg-slate-50'
+                      }`}
+                    >
+                      <span className="flex items-center gap-1.5 font-black">
+                        ✋ Physical Phone Push
+                      </span>
+                      <span className="text-[10px] font-normal opacity-90 leading-tight">
+                        Push phone forward to accelerate & zoom; pull back to brake & reverse!
+                      </span>
+                    </button>
+                  </div>
+
+                  {settings.drivingMode !== 'phonePush' && (
+                    <div className="pt-2 border-t border-indigo-200/60 dark:border-indigo-800/60">
                       <div className="flex justify-between text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
                         <span>Cruise Speed</span>
                         <span className="font-mono tabular-nums font-bold">
@@ -511,6 +553,93 @@ export const ParentPanel: React.FC<ParentPanelProps> = ({
 
           {activeTab === 'modules' && (
             <div className="space-y-6">
+              {/* Active Mini-Games Section */}
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <h3 className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                      <Sparkles className="w-4 h-4 text-amber-500" />
+                      Active Mini-Games & Special Game Modes
+                    </h3>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      Engaging mini-game modes that keep the world fun and thrilling for toddlers.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {[
+                    {
+                      id: 'paint_trail',
+                      name: 'Rainbow Paint Trail',
+                      icon: '🎨',
+                      desc: 'Wherever the car drives, paints vibrant glowing rainbow ribbon lines across the world!',
+                      badge: 'Creative Fun',
+                    },
+                    {
+                      id: 'red_chasers',
+                      name: 'Red Chasers (Tag)',
+                      icon: '🔴',
+                      desc: 'Playful bouncy red creatures chase the car! Bump them or shoot them to POP into sparkling stars!',
+                      badge: 'Playful Tag',
+                    },
+                    {
+                      id: 'star_blaster',
+                      name: 'Star Blaster (Shooting Car)',
+                      icon: '⭐',
+                      desc: 'Vehicle automatically shoots bright stars forward that pop obstacles, crystals, and balloons!',
+                      badge: 'Action Blaster',
+                    },
+                  ].map((mg) => {
+                    const isEnabled = (settings.enabledMiniGames || []).includes(mg.id);
+                    return (
+                      <div
+                        key={mg.id}
+                        onClick={() => {
+                          const current = new Set(settings.enabledMiniGames || []);
+                          if (current.has(mg.id)) {
+                            current.delete(mg.id);
+                          } else {
+                            current.add(mg.id);
+                          }
+                          onUpdateSettings({ ...settings, enabledMiniGames: Array.from(current) });
+                        }}
+                        className={`cursor-pointer p-3.5 rounded-xl border text-left transition-all flex flex-col justify-between ${
+                          isEnabled
+                            ? 'bg-amber-50/80 dark:bg-amber-950/40 border-amber-400 shadow-sm ring-1 ring-amber-400/50'
+                            : 'bg-slate-50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-700 opacity-60'
+                        }`}
+                      >
+                        <div>
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className="text-xl">{mg.icon}</span>
+                            <span className={`px-2 py-0.5 text-[9px] font-black rounded-full uppercase ${
+                              isEnabled ? 'bg-amber-500 text-slate-950' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400'
+                            }`}>
+                              {isEnabled ? 'ACTIVE' : 'OFF'}
+                            </span>
+                          </div>
+                          <div className="font-bold text-xs text-slate-900 dark:text-slate-100">
+                            {mg.name}
+                          </div>
+                          <div className="text-[11px] text-slate-600 dark:text-slate-300 mt-1 leading-snug">
+                            {mg.desc}
+                          </div>
+                        </div>
+                        <div className="mt-3 pt-2 border-t border-slate-200/60 dark:border-slate-700/60 flex items-center justify-between">
+                          <span className="text-[10px] font-semibold text-amber-700 dark:text-amber-400">
+                            {mg.badge}
+                          </span>
+                          <span className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400">
+                            {isEnabled ? 'Enabled ✓' : 'Tap to Enable'}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
               <div>
                 <div className="flex items-center justify-between mb-3">
                   <div>
@@ -626,42 +755,107 @@ export const ParentPanel: React.FC<ParentPanelProps> = ({
 
           {activeTab === 'vehicles' && (
             <div className="space-y-6">
-              {/* Active Vehicles Selection */}
+              {/* Vehicles Roster & Collision Action Rules */}
               <div>
-                <h3 className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-2">
-                  Active Vehicles in Mobile Swipe Rotation
-                </h3>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <h3 className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                      <Car className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                      All Vehicles: Map Spawn & Collision Actions
+                    </h3>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      All vehicles roam the map. Ramming a vehicle starts driving it (default) or destroys it! Parents can also swap the active vehicle directly below.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {activeVehicles.map((v) => {
-                    const isActive = settings.activeVehicleIds.includes(v.id);
+                    const hitAction = settings.vehicleHitActions?.[v.id] || 'swap';
+                    const isSwap = hitAction === 'swap';
+
                     return (
                       <div
                         key={v.id}
-                        onClick={() => toggleVehicleActive(v.id)}
-                        className={`cursor-pointer p-3 rounded-xl border text-left transition-all ${
-                          isActive
-                            ? 'bg-indigo-50/60 dark:bg-indigo-950/40 border-indigo-400 dark:border-indigo-600 shadow-sm'
-                            : 'bg-slate-50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-700 opacity-60'
-                        }`}
+                        className="p-3.5 rounded-xl border bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 space-y-3"
                       >
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs font-bold text-slate-900 dark:text-slate-100">
-                            {v.name}
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-center gap-2.5">
+                            <span
+                              className="w-4 h-4 rounded-full shadow-sm flex-shrink-0"
+                              style={{ backgroundColor: v.primaryColor }}
+                            />
+                            <div>
+                              <div className="font-bold text-xs text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+                                {v.name}
+                                <span className={`px-1.5 py-0.2 text-[9px] font-bold rounded-md uppercase ${
+                                  v.type === 'air' ? 'bg-sky-100 dark:bg-sky-950 text-sky-700 dark:text-sky-300' : 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300'
+                                }`}>
+                                  {v.type}
+                                </span>
+                              </div>
+                              <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                                {v.subtitle}
+                              </div>
+                            </div>
+                          </div>
+
+                          {onSelectVehicle && (
+                            <button
+                              type="button"
+                              onClick={() => onSelectVehicle(v.id)}
+                              className="px-2.5 py-1 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg shadow-sm transition-colors active:scale-95"
+                            >
+                              🏎️ Drive Now
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Collision Action Toggle */}
+                        <div className="pt-2 border-t border-slate-200/60 dark:border-slate-700/60 flex items-center justify-between text-xs">
+                          <span className="text-[11px] font-medium text-slate-600 dark:text-slate-400">
+                            When Rammed by Player:
                           </span>
-                          <span
-                            className="w-3 h-3 rounded-full"
-                            style={{ backgroundColor: v.primaryColor }}
-                          />
-                        </div>
-                        <div className="text-[11px] text-slate-500 dark:text-slate-400">
-                          {v.subtitle}
-                        </div>
-                        <div className="text-[10px] font-mono text-indigo-600 dark:text-indigo-400 mt-2">
-                          {isActive ? '✓ Included in Swipe' : 'Disabled'}
+                          <div className="inline-flex rounded-lg border border-slate-300 dark:border-slate-600 p-0.5 bg-slate-100 dark:bg-slate-900">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const currentActions = { ...(settings.vehicleHitActions || {}) };
+                                currentActions[v.id] = 'swap';
+                                onUpdateSettings({ ...settings, vehicleHitActions: currentActions });
+                              }}
+                              className={`px-2 py-0.5 rounded-md text-[10px] font-bold transition-colors ${
+                                isSwap
+                                  ? 'bg-emerald-600 text-white shadow-sm'
+                                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                              }`}
+                            >
+                              🚗 Drive It (Swap)
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const currentActions = { ...(settings.vehicleHitActions || {}) };
+                                currentActions[v.id] = 'destroy';
+                                onUpdateSettings({ ...settings, vehicleHitActions: currentActions });
+                              }}
+                              className={`px-2 py-0.5 rounded-md text-[10px] font-bold transition-colors ${
+                                !isSwap
+                                  ? 'bg-rose-600 text-white shadow-sm'
+                                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                              }`}
+                            >
+                              💥 Destroy It
+                            </button>
+                          </div>
                         </div>
                       </div>
                     );
                   })}
+                </div>
+
+                <div className="mt-3 p-3 bg-indigo-50/70 dark:bg-indigo-950/40 rounded-xl border border-indigo-200 dark:border-indigo-800 text-[11px] text-indigo-900 dark:text-indigo-200 leading-relaxed">
+                  🛡️ <strong>Toddler-Proof Notice:</strong> Direct swiping on the phone screen to change cars is removed so toddlers cannot accidentally change vehicles while holding the phone. Instead, ramming any vehicle on the map automatically swaps into driving it! Parents can also swap vehicles here on demand.
                 </div>
               </div>
 

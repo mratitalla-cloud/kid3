@@ -31,7 +31,7 @@ export interface CollidableObject {
   isDestroyed: boolean;
   respawnTime: number;
   portalTargetWorldId?: string;
-  extraData?: { noteIndex?: number; powerUp?: string; sound?: string; speed?: number };
+  extraData?: { noteIndex?: number; powerUp?: string; sound?: string; speed?: number; vehicleId?: string };
 }
 
 export class WorldGenerator {
@@ -576,6 +576,33 @@ export class WorldGenerator {
     }
   }
 
+  public spawnDynamicCollidable(
+    id: string,
+    type: CollidableType,
+    pos: THREE.Vector3,
+    radius: number,
+    mesh: THREE.Object3D,
+    severity: CollisionSeverity = 'minor',
+    isAir = false,
+    extraData?: { noteIndex?: number; powerUp?: string; sound?: string; speed?: number; vehicleId?: string }
+  ): void {
+    this.scene.add(mesh);
+    this.collidables.push({
+      id,
+      type,
+      position: pos.clone(),
+      radius,
+      mesh,
+      severity,
+      isAirObject: isAir,
+      hitTimestamp: 0,
+      originalScale: mesh.scale.clone(),
+      isDestroyed: false,
+      respawnTime: 0,
+      extraData,
+    });
+  }
+
   public setEnabledModules(moduleIds: string[]): void {
     this.enabledModules = new Set(moduleIds);
     this.clearAllChunks();
@@ -723,7 +750,8 @@ export class WorldGenerator {
     isAirVehicle = false,
     onCollision: (severity: CollisionSeverity, isAirItem?: boolean) => void,
     onPortalWarp?: (targetWorldId: string) => void,
-    onInteractive?: (action: 'boost' | 'spring' | 'coin' | 'mystery' | 'creature', noteIndex?: number, powerUp?: string) => void
+    onInteractive?: (action: 'boost' | 'spring' | 'coin' | 'mystery' | 'creature', noteIndex?: number, powerUp?: string) => void,
+    onVehicleHit?: (targetVehicleId: string, obj: CollidableObject) => void
   ): void {
     const now = performance.now();
 
@@ -813,30 +841,21 @@ export class WorldGenerator {
         continue;
       }
 
-      // 7. Dynamic Module Objects: Traffic Cars (Shatters NPC car when rammed!)
-      if (obj.type === 'traffic_car') {
+      // 7. Dynamic Module Objects: Traffic Cars & Trains (Hit vehicle to drive it or destroy!)
+      if (obj.type === 'traffic_car' || obj.type === 'train' || obj.extraData?.vehicleId) {
         const livePos = obj.mesh ? obj.mesh.getWorldPosition(new THREE.Vector3()) : obj.position;
         obj.position.copy(livePos);
         const dist = Math.hypot(carPos.x - livePos.x, carPos.z - livePos.z);
         if (dist < carRadius + obj.radius) {
           obj.hitTimestamp = now;
-          this.destroyObject(obj);
-          if (onInteractive) onInteractive('creature', undefined, 'honk');
-          onCollision('major');
-        }
-        continue;
-      }
-
-      // 8. Dynamic Module Objects: Choo-Choo Steam Train & Railway (Shatters train when hit!)
-      if (obj.type === 'train') {
-        const livePos = obj.mesh ? obj.mesh.getWorldPosition(new THREE.Vector3()) : obj.position;
-        obj.position.copy(livePos);
-        const dist = Math.hypot(carPos.x - livePos.x, carPos.z - livePos.z);
-        if (dist < carRadius + obj.radius) {
-          obj.hitTimestamp = now;
-          this.destroyObject(obj);
-          if (onInteractive) onInteractive('creature', undefined, 'train_whistle');
-          onCollision('major');
+          const targetVehicleId = obj.extraData?.vehicleId || (obj.type === 'train' ? 'steam_train' : 'roadster');
+          if (onVehicleHit) {
+            onVehicleHit(targetVehicleId, obj);
+          } else {
+            this.destroyObject(obj);
+            if (onInteractive) onInteractive('creature', undefined, obj.extraData?.sound || 'honk');
+            onCollision('major');
+          }
         }
         continue;
       }

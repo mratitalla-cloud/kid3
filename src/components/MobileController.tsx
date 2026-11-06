@@ -63,7 +63,6 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
   const lockStartTimeRef = useRef<number>(0);
 
   const canvasMountRef = useRef<HTMLDivElement>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
   const peerServiceRef = useRef<PeerService | null>(null);
   const motionPacketRef = useRef<MotionPacket>({
     alpha: 0,
@@ -105,10 +104,24 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
   const currentVehicleRef = useRef<VehicleItem>(vehicles[0]);
   currentVehicleRef.current = vehicles[currentVehicleIndex] || vehicles[0];
 
-  // Toddler-proof input lock
+  // Toddler-proof input lock: freeze all window scrolling, sliding up/down, context menus, and navigation
   useEffect(() => {
-    const preventDefault = (e: Event) => e.preventDefault();
+    const preventDefault = (e: Event) => {
+      if (e.cancelable) e.preventDefault();
+    };
+    const preventTouch = (e: TouchEvent) => {
+      // Prevent any swipe up or down from moving the viewport, bouncing, or sliding Safari chrome
+      if (e.cancelable) {
+        e.preventDefault();
+      }
+    };
+
     window.addEventListener('contextmenu', preventDefault);
+    window.addEventListener('touchmove', preventTouch, { passive: false });
+    document.addEventListener('touchmove', preventTouch, { passive: false });
+    window.addEventListener('gesturestart', preventDefault, { passive: false });
+    window.addEventListener('gesturechange', preventDefault, { passive: false });
+
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       e.preventDefault();
       e.returnValue = '';
@@ -117,6 +130,10 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
 
     return () => {
       window.removeEventListener('contextmenu', preventDefault);
+      window.removeEventListener('touchmove', preventTouch);
+      document.removeEventListener('touchmove', preventTouch);
+      window.removeEventListener('gesturestart', preventDefault);
+      window.removeEventListener('gesturechange', preventDefault);
       window.removeEventListener('beforeunload', handleBeforeUnload);
     };
   }, []);
@@ -145,7 +162,7 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
         isFlipped: event.isFlipped ?? false,
       };
       if (!isAudioMuted) {
-        mobileAudio.updateEngineSpeed(Math.abs(event.speed) / 8);
+        mobileAudio.updateEngineSpeed(event.isFlipped ? 0 : Math.abs(event.speed) / 8);
       }
       if (event.powerUp === 'giant') {
         vehicle3DGroupRef.current.scale.set(2.2, 2.2, 2.2);
@@ -368,50 +385,27 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
     setTimeout(() => setTestChimeActive(false), 900);
   };
 
-  // Video Player Native Fullscreen for iOS Safari (The ONLY way to completely hide the Safari bottom search bar!)
-  const enterVideoFullscreen = useCallback((): boolean => {
-    const video = videoRef.current as any;
-    if (video && typeof video.webkitEnterFullscreen === 'function') {
-      try {
-        video.webkitEnterFullscreen();
-        setIsFullscreen(true);
-        return true;
-      } catch (e) {
-        console.warn('Video webkitEnterFullscreen failed:', e);
-      }
-    }
-    return false;
-  }, []);
-
-  // Fullscreen helper: triggers native video player on iPhone Safari, standard Fullscreen API everywhere else
+  // Clean Fullscreen helper: triggers standard Fullscreen API and collapses mobile viewport
   const openFullscreen = useCallback(() => {
-    // 1. Try Video Player Fullscreen on iOS (Eliminates the bottom search bar and navigation buttons shown in screenshot!)
-    const videoLaunched = enterVideoFullscreen();
-
-    // 2. Standard Fullscreen API for Android Chrome, PC, iPadOS
-    if (!videoLaunched) {
-      const elem = document.documentElement as any;
-      try {
-        if (elem.requestFullscreen) {
-          elem.requestFullscreen({ navigationUI: 'hide' }).then(() => setIsFullscreen(true)).catch(() => {});
-        } else if (elem.webkitRequestFullscreen) {
-          elem.webkitRequestFullscreen();
-          setIsFullscreen(true);
-        } else if (elem.mozRequestFullScreen) {
-          elem.mozRequestFullScreen();
-          setIsFullscreen(true);
-        } else if (elem.msRequestFullscreen) {
-          elem.msRequestFullscreen();
-          setIsFullscreen(true);
-        }
-      } catch {
-        // Ignore
+    const elem = document.documentElement as any;
+    try {
+      if (elem.requestFullscreen) {
+        elem.requestFullscreen({ navigationUI: 'hide' }).then(() => setIsFullscreen(true)).catch(() => {});
+      } else if (elem.webkitRequestFullscreen) {
+        elem.webkitRequestFullscreen();
+        setIsFullscreen(true);
+      } else if (elem.mozRequestFullScreen) {
+        elem.mozRequestFullScreen();
+        setIsFullscreen(true);
+      } else if (elem.msRequestFullscreen) {
+        elem.msRequestFullscreen();
+        setIsFullscreen(true);
       }
+    } catch {
+      // Ignore
     }
-
-    // 3. Scroll 1px to collapse any remaining browser bars in mobile viewports
     window.scrollTo(0, 1);
-  }, [enterVideoFullscreen]);
+  }, []);
 
   // Engage Fullscreen and Mobile Browser UI Lock
   const engageFullscreenLock = async () => {
@@ -428,51 +422,9 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
     await requestWakeLock();
   };
 
-  // Aggressively prevent video pausing and handle fullscreen lifecycle
-  useEffect(() => {
-    const video = videoRef.current as any;
-    if (!video) return;
-
-    const resumePlaying = () => {
-      if (video.paused) {
-        video.play().catch(() => {});
-      }
-    };
-
-    const onEnterFs = () => {
-      setIsFullscreen(true);
-      resumePlaying();
-    };
-
-    const onEndFs = () => {
-      setIsFullscreen(false);
-      resumePlaying();
-    };
-
-    video.addEventListener('webkitbeginfullscreen', onEnterFs);
-    video.addEventListener('webkitendfullscreen', onEndFs);
-    video.addEventListener('pause', resumePlaying);
-    video.addEventListener('waiting', resumePlaying);
-    video.addEventListener('stalled', resumePlaying);
-    video.addEventListener('suspend', resumePlaying);
-    video.addEventListener('seeking', resumePlaying);
-    video.addEventListener('seeked', resumePlaying);
-
-    return () => {
-      video.removeEventListener('webkitbeginfullscreen', onEnterFs);
-      video.removeEventListener('webkitendfullscreen', onEndFs);
-      video.removeEventListener('pause', resumePlaying);
-      video.removeEventListener('waiting', resumePlaying);
-      video.removeEventListener('stalled', resumePlaying);
-      video.removeEventListener('suspend', resumePlaying);
-      video.removeEventListener('seeking', resumePlaying);
-      video.removeEventListener('seeked', resumePlaying);
-    };
-  }, []);
-
-  // Tap-to-Start: Request permissions FIRST, then lock into fullscreen
+  // Tap-to-Start: Request permissions FIRST, then lock into fullscreen and audio
   const handleTapToStart = async () => {
-    // 1. First ensure motion sensor permissions are requested & allowed
+    // 1. Ensure motion sensor permissions are requested & allowed
     if (!hasMotionSensor) {
       await triggerPermissionsRequest();
     }
@@ -486,8 +438,18 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
     mobileAudio.startBgm();
     HapticsService.trigger('major', true, 1.2);
 
-    // 4. Immediately enter Fullscreen and Lock
+    // 4. Enter Fullscreen and scroll collapse
     openFullscreen();
+
+    // 5. Orientation & Wake Lock
+    try {
+      if (screen.orientation && 'lock' in screen.orientation) {
+        (screen.orientation as any).lock('portrait').catch(() => {});
+      }
+    } catch {
+      // Ignore
+    }
+    requestWakeLock();
 
     // 5. Orientation & Wake Lock
     try {
@@ -580,26 +542,6 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
     rendererRef.current = renderer;
     container.appendChild(renderer.domElement);
 
-    // Stream WebGL Canvas into HTMLVideoElement for iOS Safari Native Fullscreen
-    const canvas = renderer.domElement;
-    const video = videoRef.current;
-    if (video) {
-      try {
-        let stream: MediaStream | null = null;
-        if (typeof (canvas as any).captureStream === 'function') {
-          stream = (canvas as any).captureStream(60);
-        } else if (typeof (canvas as any).webkitCaptureStream === 'function') {
-          stream = (canvas as any).webkitCaptureStream(60);
-        }
-        if (stream) {
-          video.srcObject = stream;
-          video.play().catch(() => {});
-        }
-      } catch (err) {
-        console.warn('captureStream error:', err);
-      }
-    }
-
     // Warm sun light directly from above
     const sunLight = new THREE.DirectionalLight(0xfffbeb, 1.8);
     sunLight.position.set(15, 35, 15);
@@ -622,11 +564,6 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
     const tick = () => {
       const delta = Math.min(0.05, clock.getDelta());
       const elapsed = clock.getElapsedTime();
-
-      // Unpausable video guard: resume instantly every frame if user or child clicks pause
-      if (videoRef.current && videoRef.current.paused) {
-        videoRef.current.play().catch(() => {});
-      }
 
       // Read real-time position from host or estimate smoothly
       const s = serverVehiclePosRef.current;
@@ -799,31 +736,16 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
   return (
     <div
       onPointerDown={() => mobileAudio.unlockSynchronously()}
-      onTouchStart={hasStarted ? handleTouchStart : undefined}
-      onTouchEnd={hasStarted ? handleTouchEnd : undefined}
       className="fixed inset-0 bg-slate-950 flex flex-col items-center justify-between select-none overflow-hidden touch-none"
     >
       {/* 3D Top-Down WebGL Viewport Container with Full World Map */}
       <div ref={canvasMountRef} className="absolute inset-0 w-full h-full" />
 
-      {/* Hidden Live 60FPS Video Element for iOS Safari Native Fullscreen API */}
-      <video
-        ref={videoRef}
-        playsInline
-        webkit-playsinline="true"
-        muted
-        autoPlay
-        className="fixed top-0 left-0 w-1 h-1 opacity-0 pointer-events-none z-0"
-        style={{
-          WebkitTouchCallout: 'none',
-        }}
-      />
-
       {/* PHASE 1: Pre-Start Fullscreen & Sensor Authorization Overlay */}
       {!hasStarted && (
         <div
-          onClick={handleTapToStart}
-          className="absolute inset-0 z-30 bg-gradient-to-br from-amber-500/90 via-orange-600/90 to-rose-600/95 backdrop-blur-md flex flex-col items-center justify-between p-6 text-white select-none cursor-pointer overflow-hidden touch-none"
+          onClick={() => handleTapToStart()}
+          className="absolute inset-0 z-30 bg-gradient-to-br from-amber-500/95 via-orange-600/95 to-rose-600/95 backdrop-blur-md flex flex-col items-center justify-between p-6 text-white select-none cursor-pointer overflow-hidden touch-none"
         >
           <div className="pt-4 text-center space-y-1.5">
             <div className="inline-flex p-3.5 bg-white/20 backdrop-blur-md rounded-3xl shadow-lg animate-bounce">
@@ -838,7 +760,7 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
           </div>
 
           <div className="w-full max-w-xs space-y-2.5">
-            {/* Step 1: Ensure steering sensors & sound are allowed FIRST before fullscreen! */}
+            {/* Step 1: Ensure steering sensors & sound are allowed FIRST before playing */}
             {!hasMotionSensor && (
               <div className="p-3 bg-amber-400 text-slate-950 rounded-2xl shadow-xl flex flex-col items-center text-center space-y-1.5 border-2 border-white animate-pulse">
                 <div className="flex items-center gap-1.5 font-black text-xs">
@@ -846,7 +768,7 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
                   <span>STEP 1: ALLOW SENSORS FIRST</span>
                 </div>
                 <p className="text-[10px] text-slate-900 font-semibold leading-tight">
-                  Tap below so iOS prompts you to allow steering sensors before entering locked fullscreen!
+                  Tap below so your phone allows steering sensors for driving!
                 </p>
                 <button
                   type="button"
@@ -861,49 +783,22 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
               </div>
             )}
 
-            {/* Primary Direct Fullscreen Trigger Button */}
+            {/* Primary Direct Start / Fullscreen Button */}
             <button
               id="fullscreen-btn"
               type="button"
-              onClick={handleTapToStart}
+              onClick={() => handleTapToStart()}
               className={`w-full py-4 px-5 bg-white text-slate-900 rounded-3xl shadow-2xl flex flex-col items-center text-center transform active:scale-95 transition-transform border-4 ${hasMotionSensor ? 'border-emerald-400' : 'border-amber-300'}`}
             >
               <div className={`w-12 h-12 ${hasMotionSensor ? 'bg-emerald-600 shadow-emerald-500/40' : 'bg-rose-600 shadow-rose-500/40'} rounded-2xl flex items-center justify-center text-white shadow-lg mb-1.5`}>
                 <Maximize2 className="w-7 h-7 animate-pulse" />
               </div>
               <span className={`text-xl font-black tracking-wide ${hasMotionSensor ? 'text-emerald-600' : 'text-rose-600'}`}>
-                {hasMotionSensor ? 'LOCK FULLSCREEN & PLAY 🎮' : 'PLAY FULLSCREEN 🎮'}
+                START DRIVING 🎮
               </span>
               <span className="text-[11px] text-slate-600 mt-0.5 font-medium">
-                {hasMotionSensor ? 'Sensors Allowed! Tap to lock full screen' : 'Allows sensors & locks edge-to-edge'}
+                Tap to start audio and full-screen driving
               </span>
-            </button>
-
-            {/* Dedicated Native Video Player Mode Button */}
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleTapToStart();
-                setTimeout(() => enterVideoFullscreen(), 50);
-              }}
-              className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs rounded-2xl flex items-center justify-center gap-2 shadow-xl transition-all active:scale-95 border border-indigo-400"
-            >
-              <Tv className="w-4 h-4 text-indigo-200" />
-              <span>📺 Video Player Fullscreen (Zero Safari Bars)</span>
-            </button>
-
-            {/* Remove Search Bar Permanently (Add to Home Screen) Button */}
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setShowHomeScreenGuide(true);
-              }}
-              className="w-full py-2.5 px-4 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs rounded-2xl flex items-center justify-center gap-2 shadow-xl transition-all active:scale-95"
-            >
-              <Smartphone className="w-4 h-4 text-slate-950" />
-              <span>📲 Remove Search Bar: Home Screen Guide</span>
             </button>
 
             {/* 3-Year-Old Proof Lock (Guided Access) Guide Button */}
@@ -913,17 +808,30 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
                 e.stopPropagation();
                 setShowToddlerLockGuide(true);
               }}
-              className="w-full py-2 px-4 bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs rounded-2xl flex items-center justify-center gap-2 shadow-xl transition-all active:scale-95"
+              className="w-full py-3 px-4 bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs rounded-2xl flex items-center justify-center gap-2 shadow-xl transition-all active:scale-95 border-2 border-amber-300"
             >
-              <Lock className="w-3.5 h-3.5 text-slate-900" />
-              <span>🔒 Toddler Screen Lock (Secret Guide)</span>
+              <Lock className="w-4 h-4 text-slate-900" />
+              <span>🔒 How to Lock Phone (Guided Access Guide)</span>
+            </button>
+
+            {/* Remove Search Bar (Add to Home Screen) Guide Button */}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowHomeScreenGuide(true);
+              }}
+              className="w-full py-2.5 px-4 bg-white/20 hover:bg-white/30 text-white font-bold text-xs rounded-2xl flex items-center justify-center gap-2 shadow-lg transition-all active:scale-95 border border-white/30"
+            >
+              <Smartphone className="w-4 h-4 text-amber-200" />
+              <span>📲 Remove Safari Search Bar: Home Screen Tip</span>
             </button>
 
             {/* Test Sound & Buzz button before driving */}
             <button
               type="button"
               onClick={handleTestAudioAndVibrate}
-              className="w-full py-2 px-4 bg-white/20 hover:bg-white/30 backdrop-blur-md border border-white/40 rounded-2xl flex items-center justify-center gap-2 text-white font-bold text-xs shadow-lg transition-all active:scale-95"
+              className="w-full py-2 px-4 bg-white/10 hover:bg-white/20 backdrop-blur-md border border-white/20 rounded-2xl flex items-center justify-center gap-2 text-white font-bold text-xs shadow-md transition-all active:scale-95"
             >
               <Vibrate className="w-3.5 h-3.5 text-amber-300" />
               <span>{testChimeActive ? '🔊 BUZZING & PLAYING!' : '🔊 Test Sound & Vibration'}</span>
@@ -943,88 +851,19 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
       {/* PHASE 2: Live In-Game HUD & Top Status Bar */}
       {hasStarted && (
         <>
-          {/* LOCKED FULLSCREEN TRAP OVERLAY: When toddler or user drops out of fullscreen,
-              any tap anywhere on screen immediately re-locks back into edge-to-edge video player! */}
-          {!isFullscreen && (
-            <div
-              onClick={(e) => {
-                e.stopPropagation();
-                openFullscreen();
-              }}
-              onTouchStart={(e) => {
-                e.stopPropagation();
-                openFullscreen();
-              }}
-              className="fixed inset-0 z-40 bg-slate-950/90 backdrop-blur-md flex flex-col items-center justify-between p-6 text-white text-center cursor-pointer select-none touch-none"
-            >
-              <div className="pt-8 space-y-2 pointer-events-none">
-                <div className="w-16 h-16 bg-rose-600 rounded-3xl flex items-center justify-center mx-auto shadow-2xl animate-bounce shadow-rose-500/50">
-                  <Maximize2 className="w-8 h-8 text-white animate-pulse" />
-                </div>
-                <h2 className="text-2xl font-black tracking-tight text-white">
-                  FULLSCREEN LOCKED 🔒
-                </h2>
-                <p className="text-xs font-bold text-amber-300 max-w-xs mx-auto">
-                  Tap ANYWHERE on screen to re-lock into Fullscreen!
-                </p>
-              </div>
-
-              <div className="w-full max-w-xs space-y-3 pointer-events-none">
-                <div className="w-full py-5 px-6 bg-rose-600 text-white font-black text-lg rounded-3xl shadow-2xl flex items-center justify-center gap-2 border-2 border-rose-400 animate-pulse">
-                  <Tv className="w-6 h-6" />
-                  <span>TAP TO RESUME FULLSCREEN 📺</span>
-                </div>
-                <p className="text-[11px] text-white/80">
-                  Kid cannot exit or click browser buttons while locked.
-                </p>
-              </div>
-
-              {/* Toddler-Proof Unlock for Parents (Hold 3 seconds) */}
-              <div
-                onClick={(e) => e.stopPropagation()}
-                onPointerDown={handleLockPointerDown}
-                onPointerUp={handleLockPointerUp}
-                onPointerCancel={handleLockPointerUp}
-                onTouchStart={handleLockPointerDown}
-                onTouchEnd={handleLockPointerUp}
-                className="pb-4 flex items-center justify-center gap-2 text-white/80 hover:text-white cursor-pointer px-4 py-2 rounded-2xl bg-white/10 backdrop-blur-sm pointer-events-auto active:scale-95 transition-transform"
-              >
-                <Lock className="w-4 h-4 text-amber-400" />
-                <span className="text-xs font-bold">
-                  {lockProgress > 0 ? `Holding to unlock... ${Math.round(lockProgress)}%` : 'Parents: Hold 3s to Unlock Menu'}
-                </span>
-              </div>
-            </div>
-          )}
-
           {/* Top Status Bar with Sensor Diagnostics & World Name */}
           <div className="w-full px-4 pt-3 flex items-center justify-between z-20 pointer-events-none">
-        <div className="flex items-center gap-2">
-          {/* Fullscreen re-lock button if browser dropped out of fullscreen */}
-          {!isFullscreen && (
-            <div className="flex items-center gap-1.5 pointer-events-auto">
+            <div className="flex items-center gap-2">
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  openFullscreen();
+                  setShowToddlerLockGuide(true);
                 }}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-full text-xs font-black shadow-lg animate-pulse"
+                className="pointer-events-auto flex items-center gap-1.5 px-3 py-1 bg-amber-500/80 hover:bg-amber-500 border border-amber-300/60 rounded-full text-slate-950 text-xs font-black backdrop-blur-sm shadow-md active:scale-95"
               >
-                <Tv className="w-3.5 h-3.5" />
-                <span>Video Fullscreen 📺</span>
+                <Lock className="w-3.5 h-3.5 text-slate-950" />
+                <span>Lock Guide</span>
               </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowHomeScreenGuide(true);
-                }}
-                className="flex items-center gap-1 px-2.5 py-1.5 bg-slate-900/80 hover:bg-slate-800 text-white border border-white/20 rounded-full text-[11px] font-bold shadow-md"
-              >
-                <Smartphone className="w-3 h-3 text-amber-300" />
-                <span>No-Bars Tip</span>
-              </button>
-            </div>
-          )}
 
           {connectionState === 'connected' ? (
             <div className="flex items-center gap-1.5 px-3 py-1 bg-emerald-500/30 border border-emerald-400/50 rounded-full text-emerald-200 text-xs font-semibold backdrop-blur-sm shadow-md">
@@ -1194,6 +1033,14 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
           onSelectWorld={(worldId) => {
             peerServiceRef.current?.send({ type: 'WORLD_WARP', worldId });
             handleHostEvent({ type: 'WORLD_WARP', worldId });
+          }}
+          onSelectVehicle={(vehicleId) => {
+            const vIndex = vehicles.findIndex((v) => v.id === vehicleId);
+            if (vIndex !== -1) {
+              setCurrentVehicleIndex(vIndex);
+              mountVehicle3D(vehicles[vIndex]);
+              peerServiceRef.current?.send({ type: 'SWAP_VEHICLE', vehicleId });
+            }
           }}
         />
       )}

@@ -17,7 +17,7 @@ export interface CollidableRegistrationFn {
     severity: CollisionSeverity,
     isAirObject: boolean,
     portalTargetWorldId?: string,
-    extraData?: { noteIndex?: number; powerUp?: string; sound?: string; speed?: number; lane?: number }
+    extraData?: { noteIndex?: number; powerUp?: string; sound?: string; speed?: number; lane?: number; vehicleId?: string }
   ): void;
 }
 

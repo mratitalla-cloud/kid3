@@ -49,12 +49,14 @@ export class VehiclePhysics {
     this.turboTrailEndTime = performance.now() + duration * 1000;
   }
 
-  public triggerSuperBounce(bounceVelocity = 22.0): void {
+  public triggerSuperBounce(bounceVelocity = 32.0, forwardBoost = 14.0): void {
     if (!this.isAirVehicle) {
       this.verticalSpeed = bounceVelocity;
+      this.temporaryBoost = Math.max(this.temporaryBoost, forwardBoost);
       this.isGrounded = false;
     } else {
-      this.targetAltitude = Math.min(32.0, this.targetAltitude + 12.0);
+      this.targetAltitude = Math.min(36.0, this.targetAltitude + 16.0);
+      this.temporaryBoost = Math.max(this.temporaryBoost, forwardBoost);
     }
   }
 
@@ -191,32 +193,41 @@ export class VehiclePhysics {
       }
     }
 
-    // 4. Longitudinal Acceleration & Auto-Cruise Dynamics
+    // 4. Longitudinal Acceleration & Auto-Cruise / Phone Push Dynamics
     const pushY = packet.accelY || 0;
+    const isPushMode = settings.drivingMode === 'phonePush';
 
-    if (pushY > 0.2) {
-      const impulse = (pushY - 0.2) * 4.0 * settings.sensitivity;
-      this.temporaryBoost = Math.min(14.0, this.temporaryBoost + impulse);
-    } else if (pushY < -0.2) {
-      const brakeImpulse = (pushY + 0.2) * 3.5 * settings.sensitivity;
-      this.temporaryBoost = Math.max(-8.0, this.temporaryBoost + brakeImpulse);
-    }
+    if (isPushMode) {
+      // In Physical Phone Push mode: Pushing phone forward accelerates; pulling back brakes/reverses!
+      // Linear forward push from accelerometer + slight forward tilt boost
+      const forwardPush = pushY * 4.5 * settings.sensitivity;
+      const tiltAssistance = packet.beta ? Math.max(-6, Math.min(6, -packet.beta * 0.2)) : 0;
+      const combinedPush = forwardPush + tiltAssistance + (packet.throttle ? packet.throttle * 12.0 : 0);
 
-    if (packet.isDriving || (packet.throttle && packet.throttle > 0.1)) {
-      this.temporaryBoost = Math.max(this.temporaryBoost, 6.0 * settings.sensitivity);
-    }
+      if (combinedPush > 0.5) {
+        this.targetSpeed = Math.min(22.0, 4.0 + combinedPush * 2.2);
+      } else if (combinedPush < -0.8) {
+        this.targetSpeed = Math.max(-6.0, combinedPush * 1.5);
+      } else {
+        // Slow down to a stop when not pushed
+        this.targetSpeed = 0;
+      }
+    } else {
+      // In Auto-Cruise mode: Consistent stable cruising speed hands-free
+      if (pushY > 0.2) {
+        const impulse = (pushY - 0.2) * 4.0 * settings.sensitivity;
+        this.temporaryBoost = Math.min(14.0, this.temporaryBoost + impulse);
+      } else if (pushY < -0.2) {
+        const brakeImpulse = (pushY + 0.2) * 3.5 * settings.sensitivity;
+        this.temporaryBoost = Math.max(-8.0, this.temporaryBoost + brakeImpulse);
+      }
 
-    if (settings.autoCruise) {
+      if (packet.isDriving || (packet.throttle && packet.throttle > 0.1)) {
+        this.temporaryBoost = Math.max(this.temporaryBoost, 6.0 * settings.sensitivity);
+      }
+
       const cruiseBase = this.isAirVehicle ? settings.cruiseSpeed * 1.25 : settings.cruiseSpeed;
       this.targetSpeed = Math.max(3.0, cruiseBase + this.temporaryBoost);
-    } else {
-      if (packet.throttle !== undefined && Math.abs(packet.throttle) > 0.05) {
-        this.targetSpeed = packet.throttle * 16.0 * settings.sensitivity;
-      } else if (packet.isDriving) {
-        this.targetSpeed = 14.0 * settings.sensitivity;
-      } else {
-        this.targetSpeed = Math.max(0, this.temporaryBoost);
-      }
     }
 
     this.targetSpeed = THREE.MathUtils.clamp(this.targetSpeed, -8, 32);
@@ -225,15 +236,16 @@ export class VehiclePhysics {
     const liftZ = packet.accelZ || 0;
     const now = performance.now();
 
-    if (liftZ > 3.5 && now - this.jumpCooldown > 800) {
+    if (liftZ > 3.0 && now - this.jumpCooldown > 750) {
       if (!this.isAirVehicle && this.isGrounded) {
-        this.verticalSpeed = 12.0;
+        this.verticalSpeed = 22.0;
+        this.temporaryBoost = Math.max(this.temporaryBoost, 10.0);
         this.isGrounded = false;
         this.jumpCooldown = now;
         if (onJump) onJump();
       } else if (this.isAirVehicle) {
         // Plane speed burst / loop-de-loop
-        this.temporaryBoost = Math.min(18.0, this.temporaryBoost + 8.0);
+        this.temporaryBoost = Math.min(22.0, this.temporaryBoost + 12.0);
         this.jumpCooldown = now;
         if (onJump) onJump();
       }
@@ -269,7 +281,8 @@ export class VehiclePhysics {
 
     if (jump && performance.now() - this.jumpCooldown > 700) {
       if (!this.isAirVehicle && this.isGrounded) {
-        this.verticalSpeed = 12.0;
+        this.verticalSpeed = 22.0;
+        this.temporaryBoost = Math.max(this.temporaryBoost, 10.0);
         this.isGrounded = false;
       } else if (this.isAirVehicle) {
         this.targetPitch -= Math.PI; // Instant half-loop / flip!
@@ -298,7 +311,12 @@ export class VehiclePhysics {
 
     // Speed target
     const base = this.isAirVehicle ? cruiseSpeed * 1.25 : cruiseSpeed;
-    if (autoCruise) {
+    if (this.isFlipped && !this.isAirVehicle) {
+      // Ground vehicles MUST STOP COMPLETELY when upside down!
+      this.speed = 0;
+      this.targetSpeed = 0;
+      this.temporaryBoost = 0;
+    } else if (autoCruise) {
       const target = Math.max(3.0, base + this.temporaryBoost);
       this.speed = THREE.MathUtils.damp(this.speed, target, 5.0, delta);
     } else {
@@ -307,11 +325,13 @@ export class VehiclePhysics {
     }
 
     // 3. Position update along current heading (-Z is forward)
-    const forwardX = -Math.sin(this.currentYaw);
-    const forwardZ = -Math.cos(this.currentYaw);
+    if (!this.isFlipped || this.isAirVehicle) {
+      const forwardX = -Math.sin(this.currentYaw);
+      const forwardZ = -Math.cos(this.currentYaw);
 
-    this.position.x += forwardX * this.speed * delta;
-    this.position.z += forwardZ * this.speed * delta;
+      this.position.x += forwardX * this.speed * delta;
+      this.position.z += forwardZ * this.speed * delta;
+    }
 
     // 4. Vertical Physics (Ground jumping vs True 3D Flight)
     if (this.isAirVehicle) {
@@ -360,7 +380,7 @@ export class VehiclePhysics {
         this.isGrounded = true;
       } else {
         if (!this.isGrounded) {
-          this.verticalSpeed -= 28.0 * delta; // Realistic toy gravity
+          this.verticalSpeed -= 19.0 * delta; // Floaty cartoon toy gravity for big airborne jumps!
           this.position.y += this.verticalSpeed * delta;
 
           if (this.position.y <= 0) {
@@ -402,8 +422,8 @@ export class VehiclePhysics {
     rootGroup.position.copy(this.position);
     rootGroup.rotation.y = this.currentYaw;
 
-    // 5. Animate Wheels roll
-    if (this.wheels.length > 0 && Math.abs(this.speed) > 0.05) {
+    // 5. Animate Wheels roll (Freeze wheels when flipped upside down!)
+    if (!this.isFlipped && this.wheels.length > 0 && Math.abs(this.speed) > 0.05) {
       const wheelRoll = (this.speed / 0.5) * delta;
       for (let i = 0; i < this.wheels.length; i++) {
         this.wheels[i].rotation.x += wheelRoll;

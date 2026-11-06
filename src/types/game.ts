@@ -29,6 +29,7 @@ export type GameEvent =
   | { type: 'WORLD_WARP'; worldId: string }
   | { type: 'GAME_STATE'; x: number; y: number; z: number; yaw: number; speed: number; worldId: string; powerUp?: string; pitch?: number; roll?: number; isFlipped?: boolean }
   | { type: 'UPDATE_SETTINGS'; settings: Partial<ParentSettings> }
+  | { type: 'TRIGGER_ON_DEMAND'; action: 'spawn_landed_plane' | 'spawn_mega_ramp' | 'spawn_train_crossing' | 'spawn_traffic_rush' | 'spawn_red_chasers' | 'spawn_star_shower' | 'spawn_mushrooms' | 'pop_word'; word?: string; vehicleId?: string }
   | { type: 'PING'; timestamp: number }
   | { type: 'PONG'; timestamp: number };
 
@@ -55,10 +56,13 @@ export interface ParentSettings {
   hapticEnabled: boolean;
   hapticIntensity: number;     // 0.5 - 1.5
   baselineAlpha: number;       // Zero orientation angle
-  activeVehicleIds: string[];  // Which vehicles appear in mobile swipe
+  activeVehicleIds: string[];  // Available vehicles
   autoCruise: boolean;         // Constant stable speed so kid doesn't have to press phone
   cruiseSpeed: number;         // Stable cruise speed (4 - 20 m/s)
+  drivingMode: 'autoCruise' | 'phonePush'; // Auto-cruise vs physically pushing phone forward/back
+  vehicleHitActions: Record<string, 'swap' | 'destroy'>; // Whether hitting a vehicle drives it or destroys it
   enabledModules: string[];    // Enabled dynamic world modules & events
+  enabledMiniGames: string[];  // Active mini-games: 'paint_trail', 'red_chasers', 'star_blaster'
 }
 
 export const DEFAULT_PARENT_SETTINGS: ParentSettings = {
@@ -73,8 +77,29 @@ export const DEFAULT_PARENT_SETTINGS: ParentSettings = {
   hapticEnabled: true,
   hapticIntensity: 1.0,
   baselineAlpha: 0,
-  activeVehicleIds: ['roadster', 'steam_train', 'biplane', 'digger'],
+  activeVehicleIds: [
+    'roadster',
+    'steam_train',
+    'biplane',
+    'digger',
+    'fire_truck',
+    'police_cruiser',
+    'ice_cream_van',
+    'monster_truck',
+  ],
   autoCruise: true,
   cruiseSpeed: 10,
-  enabledModules: ['traffic_cars', 'train_railway', 'dense_forest', 'stunt_ramps', 'balloon_parade'],
+  drivingMode: 'autoCruise',
+  vehicleHitActions: {
+    roadster: 'swap',
+    steam_train: 'swap',
+    biplane: 'swap',
+    digger: 'swap',
+    fire_truck: 'swap',
+    police_cruiser: 'swap',
+    ice_cream_van: 'swap',
+    monster_truck: 'swap',
+  },
+  enabledModules: ['traffic_cars', 'train_railway', 'dense_forest', 'stunt_ramps', 'balloon_parade', 'airport_runway'],
+  enabledMiniGames: ['paint_trail', 'red_chasers', 'star_blaster'],
 };

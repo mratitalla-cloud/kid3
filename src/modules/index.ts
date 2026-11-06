@@ -9,6 +9,7 @@ import { trainRailwayModule } from './trainRailwayModule';
 import { denseForestModule } from './denseForestModule';
 import { stuntRampsModule } from './stuntRampsModule';
 import { balloonParadeModule } from './balloonParadeModule';
+import { airportRunwayModule } from './airportRunwayModule';
 
 export * from './types';
 export { trafficCarsModule } from './trafficCarsModule';
@@ -16,6 +17,7 @@ export { trainRailwayModule } from './trainRailwayModule';
 export { denseForestModule } from './denseForestModule';
 export { stuntRampsModule } from './stuntRampsModule';
 export { balloonParadeModule } from './balloonParadeModule';
+export { airportRunwayModule } from './airportRunwayModule';
 
 export const BUILTIN_MODULES: WorldModule[] = [
   trafficCarsModule,
@@ -23,6 +25,7 @@ export const BUILTIN_MODULES: WorldModule[] = [
   denseForestModule,
   stuntRampsModule,
   balloonParadeModule,
+  airportRunwayModule,
 ];
 
 export function getModuleById(id: string): WorldModule | undefined {

@@ -95,11 +95,13 @@ function createNpcToyCar(typeIndex: number): THREE.Group {
   return car;
 }
 
+import { BUILTIN_VEHICLES } from '../vehicles/roster';
+
 export const trafficCarsModule: WorldModule = {
   id: 'traffic_cars',
   name: 'Toy City Traffic',
-  subtitle: 'Smashable NPC cars that shatter into parts!',
-  description: 'Spawns friendly NPC cars (yellow taxis, delivery trucks, bugs) driving along lanes. Ram into them to watch them explode into tumbling wheels and chassis debris!',
+  subtitle: 'Smashable NPC cars that shatter into parts or become drivable!',
+  description: 'Spawns friendly NPC vehicles (Police, Fire Truck, Ice Cream Van, Monster Truck, Digger, Roadsters) cruising along lanes. Ram into them to start driving them!',
   icon: 'Car',
   category: 'traffic',
   defaultEnabled: true,
@@ -108,14 +110,21 @@ export const trafficCarsModule: WorldModule = {
   spawnChunk: (chunk, cx, cz, originX, originZ, chunkSize, density, rand, registerCollidable) => {
     // Spawn 1-2 NPC cars per chunk near road lanes
     if (rand(110) > 0.3) {
-      const numCars = rand(111) > 0.65 ? 2 : 1;
+      const numCars = rand(111) > 0.6 ? 2 : 1;
+      const rosterGround = BUILTIN_VEHICLES.filter(v => v.type === 'ground');
 
       for (let i = 0; i < numCars; i++) {
-        const carType = Math.floor(rand(112 + i) * 3);
+        const vehicleIdx = Math.floor(rand(112 + i) * rosterGround.length);
+        const chosenVehicle = rosterGround[vehicleIdx] || rosterGround[0];
+
         const laneOffset = (i === 0 ? -1.8 : 1.8) + (rand(113 + i) - 0.5) * 0.4;
         const carZ = 8 + rand(114 + i) * (chunkSize - 16);
 
-        const carGroup = createNpcToyCar(carType);
+        // Instantiate the vehicle 3D model
+        const bundle = chosenVehicle.create3D();
+        const carGroup = bundle.root;
+        carGroup.name = 'npc_traffic_car';
+
         // Alternate directions
         const headingDirection = i === 0 ? 1 : -1;
         carGroup.rotation.y = headingDirection === 1 ? 0 : Math.PI;
@@ -127,6 +136,8 @@ export const trafficCarsModule: WorldModule = {
           minZ: 2,
           maxZ: chunkSize - 2,
           type: 'traffic_car',
+          vehicleId: chosenVehicle.id,
+          wheels: bundle.wheels,
         };
 
         chunk.add(carGroup);
@@ -135,12 +146,12 @@ export const trafficCarsModule: WorldModule = {
           `traffic_car_${cx}_${cz}_${i}`,
           'traffic_car',
           new THREE.Vector3(originX + chunkSize / 2 + laneOffset, 0.7, originZ + carZ),
-          2.3,
+          2.6,
           carGroup,
           'major',
           false,
           undefined,
-          { sound: 'honk', speed: 8 }
+          { sound: 'honk', speed: 8, vehicleId: chosenVehicle.id }
         );
       }
     }
@@ -163,12 +174,18 @@ export const trafficCarsModule: WorldModule = {
         }
 
         // Spin wheels
-        const wheels = child.getObjectByName('npc_car_wheels');
-        if (wheels) {
-          const roll = (spd / 0.4) * delta;
-          wheels.children.forEach((w) => {
+        const roll = (spd / 0.4) * delta;
+        if (child.userData.wheels && Array.isArray(child.userData.wheels)) {
+          child.userData.wheels.forEach((w: THREE.Object3D) => {
             w.rotation.x += roll;
           });
+        } else {
+          const wheels = child.getObjectByName('npc_car_wheels');
+          if (wheels) {
+            wheels.children.forEach((w) => {
+              w.rotation.x += roll;
+            });
+          }
         }
       }
     });

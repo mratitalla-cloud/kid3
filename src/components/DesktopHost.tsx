@@ -20,6 +20,7 @@ import { QRCodeOverlay } from './QRCodeOverlay';
 import { ParentPanel } from './ParentPanel';
 import { desktopAudio } from '../services/audioService';
 import { getWorldById } from '../worlds';
+import { createLandedBiplane } from '../modules/airportRunwayModule';
 import { Settings, RefreshCw, Car, Gauge, Wifi, Sparkles, Globe } from 'lucide-react';
 
 const STORAGE_KEY = 'toddler_drive_parent_settings_v1';
@@ -60,6 +61,7 @@ export const DesktopHost: React.FC = () => {
 
   const latestMotionRef = useRef<MotionPacket | null>(null);
   const clientEventRef = useRef<((event: GameEvent) => void) | null>(null);
+  const triggerOnDemandRef = useRef<((action: string, word?: string, vehicleId?: string) => void) | null>(null);
   const keyboardStateRef = useRef({ forward: 0, steer: 0, jump: false });
 
   // Save settings on update
@@ -97,19 +99,6 @@ export const DesktopHost: React.FC = () => {
     const bundle = target.create3D();
     currentBundleRef.current = bundle;
     group.add(bundle.root);
-
-    // Re-attach contact shadow
-    const contactShadowGeo = new THREE.PlaneGeometry(3.6, 5.0);
-    contactShadowGeo.rotateX(-Math.PI / 2);
-    const contactShadowMat = new THREE.MeshBasicMaterial({
-      color: 0x000000,
-      transparent: true,
-      opacity: 0.35,
-      depthWrite: false,
-    });
-    const contactShadow = new THREE.Mesh(contactShadowGeo, contactShadowMat);
-    contactShadow.position.y = 0.02;
-    group.add(contactShadow);
 
     // Link animated parts to physics engine
     physicsRef.current.wheels = bundle.wheels || [];
@@ -409,6 +398,75 @@ export const DesktopHost: React.FC = () => {
     };
     window.addEventListener('resize', handleResize);
 
+    // Mini-Game 1: Rainbow Paint Trail
+    const paintTrailGroup = new THREE.Group();
+    scene.add(paintTrailGroup);
+    const lastPaintPos = new THREE.Vector3();
+    let paintHue = 0;
+    const paintSegments: THREE.Mesh[] = [];
+
+    // Mini-Game 2: Red Chasers (Tag)
+    const redChasersGroup = new THREE.Group();
+    scene.add(redChasersGroup);
+    interface RedChaser {
+      mesh: THREE.Group;
+      position: THREE.Vector3;
+      hopPhase: number;
+      speed: number;
+    }
+    const redChasers: RedChaser[] = [];
+    const redChaserGeo = new THREE.SphereGeometry(0.85, 14, 14);
+    const redChaserMat = new THREE.MeshStandardMaterial({
+      color: 0xef4444,
+      roughness: 0.3,
+      emissive: 0xb91c1c,
+      emissiveIntensity: 0.4,
+    });
+    const chaserEyeMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
+    const chaserPupilMat = new THREE.MeshStandardMaterial({ color: 0x09090b });
+
+    for (let i = 0; i < 5; i++) {
+      const g = new THREE.Group();
+      const body = new THREE.Mesh(redChaserGeo, redChaserMat);
+      body.castShadow = true;
+      g.add(body);
+      [-0.28, 0.28].forEach((ex) => {
+        const eye = new THREE.Mesh(new THREE.SphereGeometry(0.24, 8, 8), chaserEyeMat);
+        eye.position.set(ex, 0.35, -0.68);
+        const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.12, 6, 6), chaserPupilMat);
+        pupil.position.set(ex, 0.35, -0.86);
+        g.add(eye, pupil);
+      });
+      const angle = (i / 5) * Math.PI * 2;
+      const initialPos = new THREE.Vector3(Math.cos(angle) * 35, 0.85, Math.sin(angle) * 35);
+      g.position.copy(initialPos);
+      redChasersGroup.add(g);
+      redChasers.push({
+        mesh: g,
+        position: initialPos,
+        hopPhase: i * 1.2,
+        speed: 5.5 + (i % 2) * 1.8,
+      });
+    }
+
+    // Mini-Game 3: Star Blaster Projectiles
+    const projectilesGroup = new THREE.Group();
+    scene.add(projectilesGroup);
+    interface StarProjectile {
+      mesh: THREE.Mesh;
+      velocity: THREE.Vector3;
+      life: number;
+    }
+    const activeProjectiles: StarProjectile[] = [];
+    let blasterTimer = 0;
+    const starGeo = new THREE.OctahedronGeometry(0.5, 0);
+    const starMat = new THREE.MeshStandardMaterial({
+      color: 0xfef08a,
+      emissive: 0xfacc15,
+      emissiveIntensity: 1.5,
+      roughness: 0.2,
+    });
+
     // Animation Loop
     let frameId = 0;
     const clock = new THREE.Clock();
@@ -446,7 +504,7 @@ export const DesktopHost: React.FC = () => {
         }
       );
 
-      // 3. Non-blocking Obstacle & Interactive Collisions check (Boosts, Springs, Coins, Mystery Boxes, Portals!)
+      // 3. Non-blocking Obstacle & Interactive Collisions check (Boosts, Springs, Coins, Mystery Boxes, Portals, Vehicles!)
       worldGen.checkCollisions(
         physics.position,
         2.4,
@@ -502,8 +560,170 @@ export const DesktopHost: React.FC = () => {
             else desktopAudio.playCrash('minor');
             peerServiceRef.current?.send({ type: 'INTERACTIVE_TRIGGER', action: 'creature', powerUp });
           }
+        },
+        (targetVehicleId, obj) => {
+          // Vehicle collision handling: SWAP (drive it on hit - default) or DESTROY
+          const action = settingsRef.current.vehicleHitActions?.[targetVehicleId] ?? 'swap';
+          if (action === 'swap') {
+            switchVehicleModel(targetVehicleId);
+            desktopAudio.playMysteryFanfare();
+            worldGen.triggerConfetti(obj.position, 60);
+            obj.hitTimestamp = performance.now();
+            obj.isDestroyed = true;
+            obj.mesh.visible = false;
+            obj.respawnTime = performance.now() + 8000;
+            const hitVehicleName = vehicles.find((v) => v.id === targetVehicleId)?.name || 'New Vehicle';
+            setActivePowerUpToast({ name: `DRIVING: ${hitVehicleName.toUpperCase()}! 🚗💨`, icon: '🎉' });
+            setTimeout(() => setActivePowerUpToast(null), 4000);
+            peerServiceRef.current?.send({
+              type: 'SWAP_VEHICLE',
+              vehicleId: targetVehicleId,
+            });
+          } else {
+            worldGen.destroyObject(obj);
+            desktopAudio.playCrash('major');
+            peerServiceRef.current?.send({
+              type: 'COLLISION_TRIGGER',
+              severity: 'major',
+            });
+          }
         }
       );
+
+      // Mini-Games Execution
+      const enabledMiniGames = settingsRef.current.enabledMiniGames || [];
+
+      // Mini-Game 1: Rainbow Paint Trail
+      if (enabledMiniGames.includes('paint_trail')) {
+        paintTrailGroup.visible = true;
+        if (Math.abs(physics.speed) > 1.2 && physics.position.distanceTo(lastPaintPos) > 1.2) {
+          lastPaintPos.copy(physics.position);
+          paintHue = (paintHue + 0.04) % 1.0;
+          const segMat = new THREE.MeshBasicMaterial({
+            color: new THREE.Color().setHSL(paintHue, 1.0, 0.55),
+            side: THREE.DoubleSide,
+            depthWrite: false,
+          });
+          const segGeo = new THREE.PlaneGeometry(1.8, 1.4);
+          segGeo.rotateX(-Math.PI / 2);
+          const seg = new THREE.Mesh(segGeo, segMat);
+          seg.position.set(physics.position.x, 0.05, physics.position.z);
+          seg.rotation.y = physics.currentYaw;
+          paintTrailGroup.add(seg);
+          paintSegments.push(seg);
+          if (paintSegments.length > 180) {
+            const old = paintSegments.shift();
+            if (old) {
+              paintTrailGroup.remove(old);
+              old.geometry.dispose();
+              (old.material as THREE.Material).dispose();
+            }
+          }
+        }
+      } else {
+        paintTrailGroup.visible = false;
+      }
+
+      // Mini-Game 2: Red Chasers (Tag)
+      if (enabledMiniGames.includes('red_chasers')) {
+        redChasersGroup.visible = true;
+        for (const chaser of redChasers) {
+          const dx = physics.position.x - chaser.position.x;
+          const dz = physics.position.z - chaser.position.z;
+          const dist = Math.hypot(dx, dz);
+
+          chaser.mesh.rotation.y = Math.atan2(dx, dz) + Math.PI;
+
+          if (dist > 2.2) {
+            const moveSpeed = chaser.speed * delta;
+            chaser.position.x += (dx / dist) * moveSpeed;
+            chaser.position.z += (dz / dist) * moveSpeed;
+          }
+
+          chaser.mesh.position.set(
+            chaser.position.x,
+            Math.abs(Math.sin(elapsed * 6 + chaser.hopPhase)) * 1.4 + 0.85,
+            chaser.position.z
+          );
+
+          if (dist < 2.3) {
+            desktopAudio.playPop();
+            worldGen.triggerConfetti(chaser.mesh.position, 35);
+            setActivePowerUpToast({ name: 'BOING! TAGGED RED BUDDY! 🔴✨', icon: '🎉' });
+            setTimeout(() => setActivePowerUpToast(null), 3000);
+            const respawnAngle = Math.random() * Math.PI * 2;
+            chaser.position.set(
+              physics.position.x + Math.cos(respawnAngle) * 45,
+              0.85,
+              physics.position.z + Math.sin(respawnAngle) * 45
+            );
+          }
+        }
+      } else {
+        redChasersGroup.visible = false;
+      }
+
+      // Mini-Game 3: Star Blaster
+      if (enabledMiniGames.includes('star_blaster')) {
+        projectilesGroup.visible = true;
+        blasterTimer += delta;
+        if (blasterTimer >= 0.75 && Math.abs(physics.speed) > 2.0) {
+          blasterTimer = 0;
+          desktopAudio.playWhoosh();
+          [-0.7, 0.7].forEach((side) => {
+            const star = new THREE.Mesh(starGeo, starMat);
+            const heading = physics.currentYaw;
+            const forwardX = -Math.sin(heading);
+            const forwardZ = -Math.cos(heading);
+            const rightX = -forwardZ;
+            const rightZ = forwardX;
+            star.position.set(
+              physics.position.x + forwardX * 2.5 + rightX * side,
+              physics.position.y + 0.9,
+              physics.position.z + forwardZ * 2.5 + rightZ * side
+            );
+            projectilesGroup.add(star);
+            activeProjectiles.push({
+              mesh: star,
+              velocity: new THREE.Vector3(forwardX * 36, 0, forwardZ * 36),
+              life: 1.2,
+            });
+          });
+        }
+
+        for (let i = activeProjectiles.length - 1; i >= 0; i--) {
+          const p = activeProjectiles[i];
+          p.mesh.position.addScaledVector(p.velocity, delta);
+          p.mesh.rotation.x += delta * 12;
+          p.mesh.rotation.y += delta * 15;
+          p.life -= delta;
+
+          let hit = false;
+          if (enabledMiniGames.includes('red_chasers')) {
+            for (const chaser of redChasers) {
+              if (p.mesh.position.distanceTo(chaser.mesh.position) < 2.0) {
+                hit = true;
+                desktopAudio.playPop();
+                worldGen.triggerConfetti(chaser.mesh.position, 35);
+                const respawnAngle = Math.random() * Math.PI * 2;
+                chaser.position.set(
+                  physics.position.x + Math.cos(respawnAngle) * 45,
+                  0.85,
+                  physics.position.z + Math.sin(respawnAngle) * 45
+                );
+                break;
+              }
+            }
+          }
+
+          if (hit || p.life <= 0) {
+            projectilesGroup.remove(p.mesh);
+            activeProjectiles.splice(i, 1);
+          }
+        }
+      } else {
+        projectilesGroup.visible = false;
+      }
 
       // Broadcast live position, yaw, speed, world, and active power-up to phone controller (~30 FPS)
       stateStreamTimer += delta;
@@ -686,6 +906,7 @@ export const DesktopHost: React.FC = () => {
         onForceRequestPermissions={handleForceRequestPermissions}
         currentWorldId={activeWorldId}
         onSelectWorld={handleSwitchWorld}
+        onSelectVehicle={(id) => switchVehicleModel(id)}
       />
 
       {/* Cosmic Warp Portal Transition Screen Flash */}
