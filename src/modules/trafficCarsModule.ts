@@ -158,22 +158,27 @@ export const trafficCarsModule: WorldModule = {
   },
 
   tickModule: (delta, elapsed, carPos, chunk) => {
-    // Animate NPC traffic cars driving forward along chunks
+    // Animate NPC traffic cars driving smoothly along the road
+    const worldPos = new THREE.Vector3();
     chunk.traverse((child) => {
       if (child.name === 'npc_traffic_car' && child.userData.speed !== undefined) {
         const spd = child.userData.speed;
         child.position.z += spd * delta;
 
-        // Loop within chunk bounds
-        const maxZ = child.userData.maxZ || 68;
-        const minZ = child.userData.minZ || 2;
-        if (child.position.z > maxZ) {
-          child.position.z = minZ;
-        } else if (child.position.z < minZ) {
-          child.position.z = maxZ;
+        // Check world distance to player to recycle only when well out of screen view (>110m)
+        child.getWorldPosition(worldPos);
+        const distZ = worldPos.z - carPos.z;
+        const distTotal = Math.hypot(worldPos.x - carPos.x, worldPos.z - carPos.z);
+
+        if (distTotal > 120) {
+          if (spd > 0 && distZ > 90) {
+            child.position.z -= 180;
+          } else if (spd < 0 && distZ < -90) {
+            child.position.z += 180;
+          }
         }
 
-        // Spin wheels
+        // Spin wheels realistically according to vehicle speed
         const roll = (spd / 0.4) * delta;
         if (child.userData.wheels && Array.isArray(child.userData.wheels)) {
           child.userData.wheels.forEach((w: THREE.Object3D) => {

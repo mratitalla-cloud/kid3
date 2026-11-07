@@ -37,10 +37,11 @@ export interface CollidableObject {
 export class WorldGenerator {
   public scene: THREE.Scene;
   public currentWorld: WorldDefinition;
-  public enabledModules: Set<string> = new Set(['traffic_cars', 'train_railway', 'dense_forest', 'stunt_ramps', 'balloon_parade']);
+  public enabledModules: Set<string> = new Set(['traffic_cars', 'train_railway', 'dense_forest', 'stunt_ramps', 'balloon_parade', 'airport_runway']);
   public onDestroyCallback?: (objType: string, pos: THREE.Vector3, severity: CollisionSeverity) => void;
   private chunkSize = 70;
   private activeChunks = new Map<string, THREE.Group>();
+  private horizonMesh: THREE.Mesh | null = null;
   private collidables: CollidableObject[] = [];
   private activeDebris: DebrisPiece[] = [];
   private animatedAirObjects: { mesh: THREE.Object3D; startY: number; speed: number; offset: number }[] = [];
@@ -101,6 +102,13 @@ export class WorldGenerator {
     this.initConfettiSystem();
     this.initWeatherSystem(initialWorld);
     this.applyWorldAtmosphere(initialWorld);
+
+    // Vast panoramic horizon skirt so high altitude flight never sees empty void or chunk pop-in
+    const horizonGeo = new THREE.PlaneGeometry(1600, 1600);
+    horizonGeo.rotateX(-Math.PI / 2);
+    this.horizonMesh = new THREE.Mesh(horizonGeo, this.groundMaterial);
+    this.horizonMesh.position.set(0, -0.2, 0);
+    this.scene.add(this.horizonMesh);
   }
 
   public setWorld(newWorld: WorldDefinition): void {
@@ -612,10 +620,18 @@ export class WorldGenerator {
     const currentChunkX = Math.floor(vehiclePos.x / this.chunkSize);
     const currentChunkZ = Math.floor(vehiclePos.z / this.chunkSize);
 
-    const neededKeys = new Set<string>();
+    // Follow player with panoramic horizon ground so sky flight has 0 void
+    if (this.horizonMesh) {
+      this.horizonMesh.position.set(vehiclePos.x, -0.2, vehiclePos.z);
+    }
 
-    for (let dx = -1; dx <= 1; dx++) {
-      for (let dz = -1; dz <= 1; dz++) {
+    const neededKeys = new Set<string>();
+    // When flying high, expand chunk radius from 2 to 3 chunks (covering 490m across)
+    const isHighFlight = vehiclePos.y > 6.0;
+    const chunkRadius = isHighFlight ? 3 : 2;
+
+    for (let dx = -chunkRadius; dx <= chunkRadius; dx++) {
+      for (let dz = -chunkRadius; dz <= chunkRadius; dz++) {
         const cx = currentChunkX + dx;
         const cz = currentChunkZ + dz;
         const key = `${cx},${cz}`;
@@ -629,9 +645,11 @@ export class WorldGenerator {
       }
     }
 
-    // Cleanup distant chunks
+    // Cleanup distant chunks with generous grace distance so traffic and road elements do NOT disappear abruptly
     for (const [key, chunkGroup] of this.activeChunks.entries()) {
-      if (!neededKeys.has(key)) {
+      const [cxStr, czStr] = key.split(',');
+      const dist = Math.hypot(Number(cxStr) - currentChunkX, Number(czStr) - currentChunkZ);
+      if (dist > chunkRadius + 1.2) {
         this.scene.remove(chunkGroup);
         this.activeChunks.delete(key);
       }
@@ -841,8 +859,8 @@ export class WorldGenerator {
         continue;
       }
 
-      // 7. Dynamic Module Objects: Traffic Cars & Trains (Hit vehicle to drive it or destroy!)
-      if (obj.type === 'traffic_car' || obj.type === 'train' || obj.extraData?.vehicleId) {
+      // 7. Dynamic Module Objects: Traffic Cars, Trains & Parked Vehicles (Hit vehicle to drive it or destroy!)
+      if (obj.type === 'traffic_car' || obj.type === 'train' || obj.type === 'vehicle' || obj.extraData?.vehicleId) {
         const livePos = obj.mesh ? obj.mesh.getWorldPosition(new THREE.Vector3()) : obj.position;
         obj.position.copy(livePos);
         const dist = Math.hypot(carPos.x - livePos.x, carPos.z - livePos.z);
@@ -855,6 +873,34 @@ export class WorldGenerator {
             this.destroyObject(obj);
             if (onInteractive) onInteractive('creature', undefined, obj.extraData?.sound || 'honk');
             onCollision('major');
+          }
+        }
+        continue;
+      }
+
+      // 8. Trampolines & Bouncy Mushrooms
+      if (obj.type === 'trampoline') {
+        const dist = Math.hypot(carPos.x - obj.position.x, carPos.z - obj.position.z);
+        if (dist < carRadius + obj.radius) {
+          obj.hitTimestamp = now;
+          this.triggerConfetti(obj.position, 30);
+          if (onInteractive) onInteractive('spring');
+        }
+        continue;
+      }
+
+      // 8b. Interactive Challenge Beacon Orbs (Touched by car to trigger mission!)
+      if (obj.type === 'challenge_beacon') {
+        const dist = Math.hypot(carPos.x - obj.position.x, carPos.z - obj.position.z);
+        if (dist < carRadius + obj.radius) {
+          obj.hitTimestamp = now;
+          this.destroyObject(obj);
+          this.triggerConfetti(obj.position, 60);
+          if (onInteractive) {
+            onInteractive('creature', undefined, 'mystery');
+          }
+          if (onVehicleHit && obj.extraData?.vehicleId) {
+            onVehicleHit(obj.extraData.vehicleId, obj);
           }
         }
         continue;

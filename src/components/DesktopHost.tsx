@@ -21,6 +21,7 @@ import { ParentPanel } from './ParentPanel';
 import { desktopAudio } from '../services/audioService';
 import { getWorldById } from '../worlds';
 import { createLandedBiplane } from '../modules/airportRunwayModule';
+import { getChallengeById } from '../challenges';
 import { Settings, RefreshCw, Car, Gauge, Wifi, Sparkles, Globe } from 'lucide-react';
 
 const STORAGE_KEY = 'toddler_drive_parent_settings_v1';
@@ -32,6 +33,7 @@ export const DesktopHost: React.FC = () => {
   const [isParentPanelOpen, setIsParentPanelOpen] = useState(false);
   const [vehicles, setVehicles] = useState<VehicleItem[]>(BUILTIN_VEHICLES);
   const [activeVehicleId, setActiveVehicleId] = useState<string>('roadster');
+  const activeVehicleIdRef = useRef<string>('roadster');
   const [activeWorldId, setActiveWorldId] = useState<string>('sunny_countryside');
   const activeWorldIdRef = useRef<string>('sunny_countryside');
   const [isWarping, setIsWarping] = useState(false);
@@ -89,6 +91,8 @@ export const DesktopHost: React.FC = () => {
     if (!target) return;
 
     setActiveVehicleId(target.id);
+    activeVehicleIdRef.current = target.id;
+    peerServiceRef.current?.send({ type: 'SWAP_VEHICLE', vehicleId: target.id });
 
     // Clear previous mesh children
     const group = activeVehicleGroupRef.current;
@@ -163,6 +167,8 @@ export const DesktopHost: React.FC = () => {
     } else if (event.type === 'UPDATE_SETTINGS') {
       const merged = { ...settingsRef.current, ...event.settings };
       handleUpdateSettings(merged);
+    } else if (event.type === 'TRIGGER_ON_DEMAND') {
+      triggerOnDemandRef.current?.(event.action, event.word, event.vehicleId);
     }
   };
 
@@ -323,12 +329,12 @@ export const DesktopHost: React.FC = () => {
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x93c5fd); // Sunny Countryside blue sky
-    scene.fog = new THREE.FogExp2(0xe0f2fe, 0.012); // Atmospheric horizon fog
+    scene.fog = new THREE.FogExp2(0xe0f2fe, 0.0035); // Soft atmospheric distant horizon fog
 
     const width = container.clientWidth || window.innerWidth;
     const height = container.clientHeight || window.innerHeight;
 
-    const camera = new THREE.PerspectiveCamera(52, width / height, 0.5, 300);
+    const camera = new THREE.PerspectiveCamera(52, width / height, 0.5, 900);
 
     const renderer = new THREE.WebGLRenderer({
       antialias: !isSoftwareGl,
@@ -467,6 +473,324 @@ export const DesktopHost: React.FC = () => {
       roughness: 0.2,
     });
 
+    // Aerobatic Smoke Trails for Airplanes and in-air jumps (wingtip ribbons)
+    const smokeTrailGroup = new THREE.Group();
+    scene.add(smokeTrailGroup);
+    interface SmokePuff {
+      mesh: THREE.Mesh;
+      velocity: THREE.Vector3;
+      life: number;
+      maxLife: number;
+      baseScale: number;
+    }
+    const activeSmokePuffs: SmokePuff[] = [];
+    const smokeGeo = new THREE.SphereGeometry(0.5, 8, 8);
+    const smokeMat = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0.5,
+      depthWrite: false,
+    });
+    let smokeTimer = 0;
+
+    // 3D Floating Pop Words Group
+    const popWordsGroup = new THREE.Group();
+    scene.add(popWordsGroup);
+    interface PopWordItem {
+      sprite: THREE.Sprite;
+      velocity: THREE.Vector3;
+      life: number;
+      maxLife: number;
+      baseScale: number;
+    }
+    const activePopWords: PopWordItem[] = [];
+
+    const createWordTexture = (text: string, bgColor = '#facc15', textColor = '#1e293b'): THREE.CanvasTexture => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 512;
+      canvas.height = 160;
+      const ctx = canvas.getContext('2d')!;
+      ctx.clearRect(0, 0, 512, 160);
+      ctx.fillStyle = bgColor;
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 10;
+      ctx.beginPath();
+      ctx.roundRect(12, 12, 488, 136, 36);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = textColor;
+      ctx.font = '900 48px "Plus Jakarta Sans", system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(text, 256, 80);
+
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.needsUpdate = true;
+      return tex;
+    };
+
+    const showPopWord = (text: string, pos: THREE.Vector3, bgColor = '#facc15') => {
+      const tex = createWordTexture(text, bgColor);
+      const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false });
+      const sprite = new THREE.Sprite(mat);
+      sprite.position.set(pos.x, pos.y + 2.8, pos.z);
+      sprite.scale.set(6.4, 2.0, 1.0);
+      popWordsGroup.add(sprite);
+      activePopWords.push({
+        sprite,
+        velocity: new THREE.Vector3((Math.random() - 0.5) * 1.5, 6.0, (Math.random() - 0.5) * 1.5),
+        life: 2.2,
+        maxLife: 2.2,
+        baseScale: 6.4,
+      });
+    };
+
+    // On-Demand Event Spawner implementation
+    triggerOnDemandRef.current = (action: string, word?: string, targetVehicleId?: string) => {
+      const phys = physicsRef.current;
+      const heading = phys.currentYaw;
+      const forwardX = -Math.sin(heading);
+      const forwardZ = -Math.cos(heading);
+      const rightX = -forwardZ;
+      const rightZ = forwardX;
+
+      if (action === 'spawn_landed_plane') {
+        const spawnPos = new THREE.Vector3(
+          phys.position.x + forwardX * 16,
+          0,
+          phys.position.z + forwardZ * 16
+        );
+        const planeMesh = createLandedBiplane();
+        planeMesh.position.copy(spawnPos);
+        planeMesh.rotation.y = heading + Math.PI;
+        worldGen.spawnDynamicCollidable(
+          `ondemand_biplane_${Date.now()}`,
+          'vehicle',
+          spawnPos,
+          3.4,
+          planeMesh,
+          'minor',
+          false,
+          { vehicleId: 'biplane', sound: 'whoosh' }
+        );
+        showPopWord('✈️ LANDED PLANE!', spawnPos, '#facc15');
+        desktopAudio.playMysteryFanfare();
+        setActivePowerUpToast({ name: 'LANDED BIPLANE AHEAD! RAM TO FLY!', icon: '✈️' });
+        setTimeout(() => setActivePowerUpToast(null), 3500);
+      } else if (action === 'spawn_mega_ramp') {
+        const rampPos = new THREE.Vector3(
+          phys.position.x + forwardX * 14,
+          0,
+          phys.position.z + forwardZ * 14
+        );
+        const rampGroup = new THREE.Group();
+        const rampGeo = new THREE.BoxGeometry(6.0, 2.4, 5.5);
+        rampGeo.rotateX(-Math.PI / 7);
+        const rampMat = new THREE.MeshStandardMaterial({ color: 0xf97316, roughness: 0.4 });
+        const rampMesh = new THREE.Mesh(rampGeo, rampMat);
+        rampMesh.position.set(0, 1.2, 0);
+        rampGroup.add(rampMesh);
+
+        const ringGeo = new THREE.TorusGeometry(3.2, 0.3, 12, 24);
+        const ringMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, emissive: 0xfacc15, emissiveIntensity: 1.2 });
+        const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+        ringMesh.position.set(0, 6.2, 4.0);
+        rampGroup.add(ringMesh);
+
+        rampGroup.position.copy(rampPos);
+        rampGroup.rotation.y = heading;
+        worldGen.spawnDynamicCollidable(
+          `ondemand_ramp_${Date.now()}`,
+          'stunt_ramp',
+          rampPos,
+          3.6,
+          rampGroup,
+          'minor',
+          false,
+          { sound: 'whoosh' }
+        );
+        showPopWord('🚀 MEGA RAMP!', rampPos, '#ec4899');
+        desktopAudio.playTurboBoost();
+        setActivePowerUpToast({ name: 'MEGA STUNT RAMP AHEAD!', icon: '🚀' });
+        setTimeout(() => setActivePowerUpToast(null), 3500);
+      } else if (action === 'spawn_mushrooms') {
+        [-3.2, 0, 3.2].forEach((ox, idx) => {
+          const mPos = new THREE.Vector3(
+            phys.position.x + forwardX * (12 + idx * 4) + rightX * ox,
+            0,
+            phys.position.z + forwardZ * (12 + idx * 4) + rightZ * ox
+          );
+          const mGroup = new THREE.Group();
+          const stem = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.5, 0.8, 2.2, 10),
+            new THREE.MeshStandardMaterial({ color: 0xfef08a })
+          );
+          stem.position.set(0, 1.1, 0);
+          mGroup.add(stem);
+          const cap = new THREE.Mesh(
+            new THREE.SphereGeometry(1.8, 14, 14, 0, Math.PI * 2, 0, Math.PI / 2),
+            new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.3 })
+          );
+          cap.position.set(0, 2.2, 0);
+          mGroup.add(cap);
+          mGroup.position.copy(mPos);
+          worldGen.spawnDynamicCollidable(
+            `ondemand_shroom_${Date.now()}_${idx}`,
+            'trampoline',
+            mPos,
+            2.2,
+            mGroup,
+            'minor',
+            false,
+            { sound: 'boing' }
+          );
+        });
+        showPopWord('🍄 BOUNCY SHROOMS!', phys.position, '#10b981');
+        desktopAudio.playPop();
+      } else if (action === 'spawn_traffic_rush') {
+        const rosterVehicles = ['police_cruiser', 'fire_truck', 'ice_cream_van', 'monster_truck', 'roadster'];
+        [-3.5, 0, 3.5].forEach((ox, i) => {
+          const vId = rosterVehicles[i % rosterVehicles.length];
+          const vPos = new THREE.Vector3(
+            phys.position.x + forwardX * (14 + i * 5) + rightX * ox,
+            0,
+            phys.position.z + forwardZ * (14 + i * 5) + rightZ * ox
+          );
+          const carGroup = new THREE.Group();
+          const body = new THREE.Mesh(
+            new THREE.BoxGeometry(2.0, 1.2, 4.0),
+            new THREE.MeshStandardMaterial({ color: i === 0 ? 0x3b82f6 : i === 1 ? 0xef4444 : 0xec4899 })
+          );
+          body.position.set(0, 0.8, 0);
+          carGroup.add(body);
+          carGroup.position.copy(vPos);
+          carGroup.rotation.y = heading;
+          worldGen.spawnDynamicCollidable(
+            `ondemand_traffic_${Date.now()}_${i}`,
+            'traffic_car',
+            vPos,
+            2.5,
+            carGroup,
+            'minor',
+            false,
+            { vehicleId: vId, speed: 7.0 }
+          );
+        });
+        showPopWord('🚗 TRAFFIC CONVOY!', phys.position, '#3b82f6');
+        desktopAudio.playHonk();
+      } else if (action === 'spawn_star_shower') {
+        for (let i = 0; i < 8; i++) {
+          const sPos = new THREE.Vector3(
+            phys.position.x + forwardX * (8 + i * 3) + (Math.random() - 0.5) * 4,
+            1.4,
+            phys.position.z + forwardZ * (8 + i * 3) + (Math.random() - 0.5) * 4
+          );
+          const starMesh = new THREE.Mesh(
+            new THREE.OctahedronGeometry(0.7, 0),
+            new THREE.MeshStandardMaterial({ color: 0xfbbf24, emissive: 0xf59e0b, emissiveIntensity: 1.2 })
+          );
+          starMesh.position.copy(sPos);
+          worldGen.spawnDynamicCollidable(
+            `ondemand_star_${Date.now()}_${i}`,
+            'coin',
+            sPos,
+            1.6,
+            starMesh,
+            'minor',
+            false,
+            { noteIndex: i % 8 }
+          );
+        }
+        showPopWord('⭐ STAR SHOWER!', phys.position, '#f59e0b');
+        desktopAudio.playStarCollect();
+      } else if (action === 'pop_word') {
+        showPopWord(word || 'WHEEE! 🎈', phys.position, '#a855f7');
+        desktopAudio.playSpringBounce();
+      } else if (targetVehicleId) {
+        const vPos = new THREE.Vector3(
+          phys.position.x + forwardX * 12,
+          0,
+          phys.position.z + forwardZ * 12
+        );
+        const vGroup = new THREE.Group();
+        const body = new THREE.Mesh(
+          new THREE.BoxGeometry(2.2, 1.4, 4.2),
+          new THREE.MeshStandardMaterial({ color: 0x6366f1 })
+        );
+        body.position.set(0, 0.9, 0);
+        vGroup.add(body);
+        vGroup.position.copy(vPos);
+        vGroup.rotation.y = heading;
+        worldGen.spawnDynamicCollidable(
+          `ondemand_v_${Date.now()}`,
+          'vehicle',
+          vPos,
+          2.8,
+          vGroup,
+          'minor',
+          false,
+          { vehicleId: targetVehicleId, sound: 'whoosh' }
+        );
+        const vName = vehicles.find((v) => v.id === targetVehicleId)?.name || 'Vehicle';
+        showPopWord(`🚗 HIT: ${vName.toUpperCase()}!`, vPos, '#6366f1');
+      } else if (action === 'spawn_challenge') {
+        const challengeId = targetVehicleId || 'police_chase';
+        const challenge = getChallengeById(challengeId);
+        const beaconPos = new THREE.Vector3(
+          phys.position.x + forwardX * 16,
+          1.8,
+          phys.position.z + forwardZ * 16
+        );
+        const beaconGroup = new THREE.Group();
+        beaconGroup.name = 'challenge_beacon_group';
+        const orbGeo = new THREE.SphereGeometry(1.6, 16, 16);
+        const orbColor = challenge ? new THREE.Color(challenge.bubbleColor) : new THREE.Color(0x3b82f6);
+        const orbMat = new THREE.MeshStandardMaterial({
+          color: orbColor,
+          emissive: orbColor,
+          emissiveIntensity: 0.9,
+          roughness: 0.2,
+          metalness: 0.8,
+          transparent: true,
+          opacity: 0.88,
+        });
+        const orb = new THREE.Mesh(orbGeo, orbMat);
+        beaconGroup.add(orb);
+
+        const ringGeo = new THREE.TorusGeometry(2.4, 0.2, 12, 32);
+        const ringMat = new THREE.MeshStandardMaterial({
+          color: 0xffffff,
+          emissive: orbColor,
+          emissiveIntensity: 0.5,
+        });
+        const ring = new THREE.Mesh(ringGeo, ringMat);
+        ring.rotation.x = Math.PI / 4;
+        beaconGroup.add(ring);
+
+        beaconGroup.position.copy(beaconPos);
+        worldGen.spawnDynamicCollidable(
+          `ondemand_challenge_${Date.now()}`,
+          'challenge_beacon',
+          beaconPos,
+          3.2,
+          beaconGroup,
+          'minor',
+          false,
+          { vehicleId: challenge?.vehicleId, sound: 'mystery', powerUp: challengeId }
+        );
+
+        const challengeTitle = challenge?.title || 'CHALLENGE AHEAD!';
+        showPopWord(`${challenge?.badge || '🎯'} ${challengeTitle.toUpperCase()}!`, beaconPos, challenge?.bubbleColor || '#3b82f6');
+        desktopAudio.playMysteryFanfare();
+        setActivePowerUpToast({
+          name: `${challenge?.badge || '🎯'} ${challengeTitle.toUpperCase()} BEACON AHEAD!`,
+          icon: challenge?.badge || '🎯',
+        });
+        setTimeout(() => setActivePowerUpToast(null), 4000);
+      }
+    };
+
     // Animation Loop
     let frameId = 0;
     const clock = new THREE.Clock();
@@ -530,8 +854,9 @@ export const DesktopHost: React.FC = () => {
             desktopAudio.playTurboBoost();
             peerServiceRef.current?.send({ type: 'INTERACTIVE_TRIGGER', action: 'boost' });
           } else if (action === 'spring') {
-            physics.triggerSuperBounce(22.0);
+            physics.triggerSuperBounce(34.0, 16.0);
             desktopAudio.playSpringBounce();
+            showPopWord('SUPER JUMP! 🚀', physics.position, '#ec4899');
             peerServiceRef.current?.send({ type: 'INTERACTIVE_TRIGGER', action: 'spring' });
           } else if (action === 'coin') {
             desktopAudio.playCoinNote(noteIndex ?? 0);
@@ -562,6 +887,25 @@ export const DesktopHost: React.FC = () => {
           }
         },
         (targetVehicleId, obj) => {
+          // Challenge Beacon trigger: changes world, swaps vehicle, triggers mission fanfare!
+          if (obj.type === 'challenge_beacon') {
+            const challengeId = obj.extraData?.powerUp || 'police_chase';
+            const challenge = getChallengeById(challengeId);
+            if (challenge) {
+              handleSwitchWorld(challenge.targetWorldId);
+              switchVehicleModel(challenge.vehicleId);
+              physics.triggerTurboBoost(24.0, 3.0);
+              desktopAudio.playMysteryFanfare();
+              showPopWord(challenge.bannerText, physics.position, challenge.bubbleColor);
+              setActivePowerUpToast({ name: challenge.bannerText, icon: challenge.badge });
+              setTimeout(() => setActivePowerUpToast(null), 4000);
+              if (challengeId === 'police_chase') {
+                triggerOnDemandRef.current?.('spawn_traffic_rush');
+              }
+            }
+            return;
+          }
+
           // Vehicle collision handling: SWAP (drive it on hit - default) or DESTROY
           const action = settingsRef.current.vehicleHitActions?.[targetVehicleId] ?? 'swap';
           if (action === 'swap') {
@@ -593,10 +937,12 @@ export const DesktopHost: React.FC = () => {
       // Mini-Games Execution
       const enabledMiniGames = settingsRef.current.enabledMiniGames || [];
 
-      // Mini-Game 1: Rainbow Paint Trail
+      // Mini-Game 1: Rainbow Paint Trail (Ground vehicles ON THE GROUND only!)
+      const isVehicleInAir = !physics.isGrounded || physics.position.y > 0.6 || physics.isAirVehicle;
       if (enabledMiniGames.includes('paint_trail')) {
         paintTrailGroup.visible = true;
-        if (Math.abs(physics.speed) > 1.2 && physics.position.distanceTo(lastPaintPos) > 1.2) {
+        // Strictly only paint when wheels are rolling ON THE GROUND! Never in the air, and not for airplanes!
+        if (!isVehicleInAir && Math.abs(physics.speed) > 1.2 && physics.position.distanceTo(lastPaintPos) > 1.2) {
           lastPaintPos.copy(physics.position);
           paintHue = (paintHue + 0.04) % 1.0;
           const segMat = new THREE.MeshBasicMaterial({
@@ -622,6 +968,79 @@ export const DesktopHost: React.FC = () => {
         }
       } else {
         paintTrailGroup.visible = false;
+      }
+
+      // Aerobatic Smoke Trails for Airplanes / In-Air Jumps (Wingtip cloud trails in mid-air)
+      const shouldEmitSmoke =
+        (physics.isAirVehicle || (!physics.isGrounded && physics.position.y > 1.5)) &&
+        Math.abs(physics.speed) > 1.5;
+      if (shouldEmitSmoke) {
+        smokeTimer += delta;
+        if (smokeTimer >= 0.05) {
+          smokeTimer = 0;
+          const heading = physics.currentYaw;
+          const forwardX = -Math.sin(heading);
+          const forwardZ = -Math.cos(heading);
+          const rightX = -forwardZ;
+          const rightZ = forwardX;
+          const wingOffsets = physics.isAirVehicle ? [-2.6, 2.6] : [0];
+          wingOffsets.forEach((offset) => {
+            const puffMesh = new THREE.Mesh(smokeGeo, smokeMat.clone());
+            puffMesh.position.set(
+              physics.position.x + rightX * offset - forwardX * 0.8,
+              physics.position.y + (physics.isAirVehicle ? 0.3 : 0.8),
+              physics.position.z + rightZ * offset - forwardZ * 0.8
+            );
+            smokeTrailGroup.add(puffMesh);
+            activeSmokePuffs.push({
+              mesh: puffMesh,
+              velocity: new THREE.Vector3(
+                (Math.random() - 0.5) * 0.4,
+                0.4 + Math.random() * 0.4,
+                (Math.random() - 0.5) * 0.4
+              ),
+              life: 1.8,
+              maxLife: 1.8,
+              baseScale: 0.6 + Math.random() * 0.3,
+            });
+          });
+        }
+      }
+
+      for (let i = activeSmokePuffs.length - 1; i >= 0; i--) {
+        const p = activeSmokePuffs[i];
+        p.life -= delta;
+        p.mesh.position.addScaledVector(p.velocity, delta);
+        const progress = 1 - p.life / p.maxLife;
+        const currentScale = p.baseScale * (1.0 + progress * 2.8);
+        p.mesh.scale.setScalar(currentScale);
+        (p.mesh.material as THREE.MeshBasicMaterial).opacity = Math.max(0, (1 - progress) * 0.45);
+
+        if (p.life <= 0) {
+          smokeTrailGroup.remove(p.mesh);
+          p.mesh.geometry.dispose();
+          (p.mesh.material as THREE.Material).dispose();
+          activeSmokePuffs.splice(i, 1);
+        }
+      }
+
+      // 3D Floating Pop Words Tick
+      for (let i = activePopWords.length - 1; i >= 0; i--) {
+        const pw = activePopWords[i];
+        pw.life -= delta;
+        pw.sprite.position.addScaledVector(pw.velocity, delta);
+        pw.velocity.y *= Math.exp(-1.4 * delta);
+        const progress = 1 - pw.life / pw.maxLife;
+        pw.sprite.material.opacity = Math.max(0, 1 - progress * 1.2);
+        const bounceScale = pw.baseScale * (1.0 + Math.sin(progress * Math.PI) * 0.25);
+        pw.sprite.scale.set(bounceScale, bounceScale * (2.0 / 6.4), 1.0);
+
+        if (pw.life <= 0) {
+          popWordsGroup.remove(pw.sprite);
+          pw.sprite.material.map?.dispose();
+          pw.sprite.material.dispose();
+          activePopWords.splice(i, 1);
+        }
       }
 
       // Mini-Game 2: Red Chasers (Tag)
@@ -740,6 +1159,7 @@ export const DesktopHost: React.FC = () => {
           isFlipped: physics.isFlipped,
           speed: physics.speed,
           worldId: activeWorldIdRef.current,
+          vehicleId: activeVehicleIdRef.current,
           powerUp: physics.powerUpActive || undefined,
         });
       }
@@ -907,6 +1327,7 @@ export const DesktopHost: React.FC = () => {
         currentWorldId={activeWorldId}
         onSelectWorld={handleSwitchWorld}
         onSelectVehicle={(id) => switchVehicleModel(id)}
+        onTriggerOnDemand={(action, word, vehicleId) => triggerOnDemandRef.current?.(action, word, vehicleId)}
       />
 
       {/* Cosmic Warp Portal Transition Screen Flash */}

@@ -169,6 +169,15 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
       } else {
         vehicle3DGroupRef.current.scale.set(1.0, 1.0, 1.0);
       }
+
+      // Sync vehicle model if changed on host
+      if (event.vehicleId && event.vehicleId !== currentVehicleRef.current?.id) {
+        const vIdx = vehicles.findIndex((v) => v.id === event.vehicleId);
+        if (vIdx !== -1) {
+          setCurrentVehicleIndex(vIdx);
+          mountVehicle3D(vehicles[vIdx]);
+        }
+      }
     } else if (event.type === 'INTERACTIVE_TRIGGER') {
       if (event.action === 'boost') {
         mobileAudio.playTurboBoost();
@@ -598,16 +607,14 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
       const forwardZ = -Math.cos(vehicleYaw);
 
       // EXACT SAME 3D BIRD'S-EYE PERSPECTIVE AS PC:
-      // On PC, camera is elevated 24m and offset 18m behind heading, looking 2m in front of vehicle at 0.5m height.
-      // By positioning 18m behind the vehicle along its heading, the vehicle is GUARANTEED to ALWAYS face
-      // directly towards the front/top of the phone screen, with the EXACT SAME gorgeous 3D view as PC!
-      const camX = s.x - forwardX * 18;
+      // Identical cardinal north-facing overhead view matching the PC desktop screen 100%
+      const camX = s.x;
       const camY = s.y + 24;
-      const camZ = s.z - forwardZ * 18;
+      const camZ = s.z + 18;
 
       camera.position.set(camX, camY, camZ);
       camera.up.set(0, 1, 0);
-      camera.lookAt(s.x + forwardX * 2, s.y + 0.5, s.z + forwardZ * 2);
+      camera.lookAt(s.x, s.y + 0.5, s.z - 2.0);
 
       // Sun tracks vehicle
       sunLight.position.set(s.x + 15, s.y + 35, s.z + 15);
@@ -1041,6 +1048,14 @@ export const MobileController: React.FC<MobileControllerProps> = ({ sessionId })
               mountVehicle3D(vehicles[vIndex]);
               peerServiceRef.current?.send({ type: 'SWAP_VEHICLE', vehicleId });
             }
+          }}
+          onTriggerOnDemand={(action, word, vehicleId) => {
+            peerServiceRef.current?.send({
+              type: 'TRIGGER_ON_DEMAND',
+              action,
+              word,
+              vehicleId,
+            });
           }}
         />
       )}

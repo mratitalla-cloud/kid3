@@ -198,19 +198,31 @@ export class VehiclePhysics {
     const isPushMode = settings.drivingMode === 'phonePush';
 
     if (isPushMode) {
-      // In Physical Phone Push mode: Pushing phone forward accelerates; pulling back brakes/reverses!
-      // Linear forward push from accelerometer + slight forward tilt boost
-      const forwardPush = pushY * 4.5 * settings.sensitivity;
-      const tiltAssistance = packet.beta ? Math.max(-6, Math.min(6, -packet.beta * 0.2)) : 0;
-      const combinedPush = forwardPush + tiltAssistance + (packet.throttle ? packet.throttle * 12.0 : 0);
+      // In Physical Phone Push mode: Pushing phone forward adds rolling momentum that coasts!
+      if (pushY > 0.25) {
+        const impulse = (pushY - 0.25) * 7.5 * settings.sensitivity;
+        this.targetSpeed = Math.min(26.0, Math.max(this.targetSpeed, 3.0) + impulse);
+      } else if (pushY < -0.35) {
+        // Pulling phone backwards acts as brakes and reverse
+        const brakeImpulse = (Math.abs(pushY) - 0.35) * 6.5 * settings.sensitivity;
+        if (this.targetSpeed > 1.0) {
+          this.targetSpeed = Math.max(0, this.targetSpeed - brakeImpulse);
+        } else {
+          this.targetSpeed = Math.max(-8.0, this.targetSpeed - brakeImpulse * 0.7);
+        }
+      }
 
-      if (combinedPush > 0.5) {
-        this.targetSpeed = Math.min(22.0, 4.0 + combinedPush * 2.2);
-      } else if (combinedPush < -0.8) {
-        this.targetSpeed = Math.max(-6.0, combinedPush * 1.5);
-      } else {
-        // Slow down to a stop when not pushed
-        this.targetSpeed = 0;
+      // Tablet/Table tilt assistance: tilting nose down rolls forward; tilting nose up brakes
+      if (packet.beta !== undefined && Math.abs(packet.beta) < 45) {
+        if (packet.beta < -3) {
+          this.targetSpeed = Math.min(24.0, this.targetSpeed + Math.abs(packet.beta) * 0.22 * settings.sensitivity);
+        } else if (packet.beta > 6) {
+          this.targetSpeed = Math.max(-6.0, this.targetSpeed - packet.beta * 0.18 * settings.sensitivity);
+        }
+      }
+
+      if (packet.throttle && Math.abs(packet.throttle) > 0.05) {
+        this.targetSpeed = Math.min(24.0, this.targetSpeed + packet.throttle * 8.0);
       }
     } else {
       // In Auto-Cruise mode: Consistent stable cruising speed hands-free

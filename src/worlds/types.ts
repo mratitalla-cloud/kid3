@@ -30,7 +30,10 @@ export type InteractiveObjectType =
   | 'fallen_log'
   | 'train'
   | 'stunt_ramp'
-  | 'balloon_cluster';
+  | 'balloon_cluster'
+  | 'vehicle'
+  | 'trampoline'
+  | 'challenge_beacon';
 
 export interface CollidableRegisterFn {
   (

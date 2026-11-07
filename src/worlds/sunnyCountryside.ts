@@ -59,13 +59,14 @@ export const sunnyCountrysideWorld: WorldDefinition = {
     registerCollidable,
     availableWorldIds
   ) => {
-    // 1. DRIVE-THROUGH BIG RED BARN (Over the Road!)
-    // Spawn a giant tunnel barn that spans over the road every 3 chunks
-    if (cz % 3 === 0 && rand(1) > 0.3) {
+    // Zoned rhythmic layout: Each chunk gets ONE distinct primary feature for clear, non-dizzying gameplay!
+    const zone = (Math.abs(cz) + Math.abs(cx) * 2) % 6;
+
+    // ZONE 0: DRIVE-THROUGH BIG RED BARN (Iconic Architecture Tunnel)
+    if (zone === 0) {
       const barnZ = chunkSize / 2;
       const barnGroup = new THREE.Group();
 
-      // Left and right support walls
       const leftWall = new THREE.Mesh(new THREE.BoxGeometry(2.5, 6.0, 10.0), barnRedMat);
       leftWall.position.set(-5.5, 3.0, 0);
       leftWall.castShadow = true;
@@ -74,18 +75,15 @@ export const sunnyCountrysideWorld: WorldDefinition = {
       rightWall.position.set(5.5, 3.0, 0);
       rightWall.castShadow = true;
 
-      // High arched roof spanning over the road
       const archRoof = new THREE.Mesh(new THREE.ConeGeometry(9.0, 4.0, 4), barnRoofMat);
       archRoof.rotation.y = Math.PI / 4;
       archRoof.scale.set(1.1, 1.0, 1.3);
       archRoof.position.set(0, 7.8, 0);
       archRoof.castShadow = true;
 
-      // Welcoming white trim sign
       const signBoard = new THREE.Mesh(new THREE.BoxGeometry(6.0, 1.2, 0.3), whiteTrimMat);
       signBoard.position.set(0, 5.6, 5.1);
 
-      // Cheerful glowing golden lanterns on the barn corners
       const lanternGeo = new THREE.SphereGeometry(0.35, 8, 8);
       const lanternMat = new THREE.MeshBasicMaterial({ color: 0xfde047 });
       const lanternL = new THREE.Mesh(lanternGeo, lanternMat);
@@ -97,7 +95,6 @@ export const sunnyCountrysideWorld: WorldDefinition = {
       barnGroup.position.set(chunkSize / 2, 0, barnZ);
       chunk.add(barnGroup);
 
-      // Register barn walls as destructible/collidable if hit on side, but middle is a clear open drive-through tunnel!
       registerCollidable(
         `barn_left_${cx}_${cz}`,
         'barn',
@@ -118,44 +115,44 @@ export const sunnyCountrysideWorld: WorldDefinition = {
       );
     }
 
-    // 2. TURBO SPEED BOOST CHEVRONS ON ROAD
-    // Glowing rocket launcher strips on the road
-    if (rand(10) > 0.35) {
-      const boostZ = 12 + rand(11) * (chunkSize - 24);
-      const boostGroup = new THREE.Group();
+    // ZONE 1: MUSICAL MELODY COINS (Ascending Major Scale on Open Road)
+    else if (zone === 1) {
+      const startZ = 14;
+      const coinOffset = 0; // Center of road for easy driving
 
-      const padPlate = new THREE.Mesh(new THREE.BoxGeometry(5.2, 0.08, 3.6), woodDarkMat);
-      padPlate.position.y = 0.04;
+      for (let c = 0; c < 5; c++) {
+        const coinZ = startZ + c * 8.5; // Generously spaced 8.5m apart!
+        const coinGroup = new THREE.Group();
+        const disc = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.7, 0.35, 16), goldCoinMat);
+        const star = new THREE.Mesh(
+          new THREE.OctahedronGeometry(0.42, 0),
+          new THREE.MeshStandardMaterial({ color: 0xfef08a, emissive: 0xfde047, emissiveIntensity: 0.6 })
+        );
+        star.position.y = 0.22;
+        star.scale.set(1.1, 0.3, 1.1);
+        coinGroup.add(disc, star);
+        coinGroup.rotation.x = 0.85; // 50 deg tilt facing camera
+        coinGroup.position.set(chunkSize / 2 + coinOffset, 0.9, coinZ);
+        chunk.add(coinGroup);
 
-      // 3 Glowing Arrow Chevrons
-      const arrowGeo = new THREE.ConeGeometry(0.7, 1.2, 3);
-      arrowGeo.rotateX(Math.PI / 2);
-      [-0.8, 0, 0.8].forEach((zOff) => {
-        const arrow = new THREE.Mesh(arrowGeo, boostOrangeMat);
-        arrow.position.set(0, 0.1, zOff);
-        boostGroup.add(arrow);
-      });
-
-      boostGroup.add(padPlate);
-      boostGroup.position.set(chunkSize / 2, 0, boostZ);
-      chunk.add(boostGroup);
-
-      registerCollidable(
-        `boost_${cx}_${cz}`,
-        'boost_pad',
-        new THREE.Vector3(originX + chunkSize / 2, 0.2, originZ + boostZ),
-        2.8,
-        boostGroup,
-        'minor',
-        false
-      );
+        registerCollidable(
+          `coin_${cx}_${cz}_${c}`,
+          'coin',
+          new THREE.Vector3(originX + chunkSize / 2 + coinOffset, 0.9, originZ + coinZ),
+          1.6,
+          coinGroup,
+          'minor',
+          false,
+          undefined,
+          { noteIndex: c % 8 }
+        );
+      }
     }
 
-    // 3. BOUNCY TRAMPOLINE MUSHROOM JUMP SPRINGS
-    // Red spotted giant bouncy mushrooms that fling the car 20m high!
-    if (rand(20) > 0.4) {
-      const mushX = rand(21) > 0.5 ? chunkSize / 2 + 5.5 : chunkSize / 2 - 5.5;
-      const mushZ = 8 + rand(22) * (chunkSize - 16);
+    // ZONE 2: BOUNCY TRAMPOLINE MUSHROOM & FLUTTERING CHICKENS
+    else if (zone === 2) {
+      const mushX = chunkSize / 2 + 3.8;
+      const mushZ = chunkSize / 2;
 
       const mushGroup = new THREE.Group();
       const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 1.1, 1.6, 12), springMushroomStemMat);
@@ -167,7 +164,6 @@ export const sunnyCountrysideWorld: WorldDefinition = {
       cap.scale.set(1.3, 0.8, 1.3);
       cap.castShadow = true;
 
-      // White spots on mushroom cap
       const spotGeo = new THREE.CircleGeometry(0.3, 8);
       spotGeo.rotateX(-Math.PI / 2);
       const spotMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
@@ -190,82 +186,11 @@ export const sunnyCountrysideWorld: WorldDefinition = {
         'minor',
         false
       );
-    }
 
-    // 4. MUSICAL MELODY COINS (Ascending Major Scale!)
-    // Chains of 4 golden spinning 3D star coins that play ascending chime notes
-    if (rand(30) > 0.3) {
-      const startZ = 10 + rand(31) * (chunkSize - 35);
-      const coinOffset = (rand(32) - 0.5) * 2.8;
-
-      for (let c = 0; c < 4; c++) {
-        const coinZ = startZ + c * 4.5;
-        const coinGroup = new THREE.Group();
-        const disc = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.7, 0.35, 16), goldCoinMat);
-        const star = new THREE.Mesh(
-          new THREE.OctahedronGeometry(0.42, 0),
-          new THREE.MeshStandardMaterial({ color: 0xfef08a, emissive: 0xfde047, emissiveIntensity: 0.6 })
-        );
-        star.position.y = 0.22;
-        star.scale.set(1.1, 0.3, 1.1);
-        coinGroup.add(disc, star);
-        coinGroup.rotation.x = 0.85; // 50 deg tilt facing camera!
-        coinGroup.position.set(chunkSize / 2 + coinOffset, 0.9, coinZ);
-        chunk.add(coinGroup);
-
-        registerCollidable(
-          `coin_${cx}_${cz}_${c}`,
-          'coin',
-          new THREE.Vector3(originX + chunkSize / 2 + coinOffset, 0.9, originZ + coinZ),
-          1.5,
-          coinGroup,
-          'minor',
-          false,
-          undefined,
-          { noteIndex: (cz * 4 + c) % 8 }
-        );
-      }
-    }
-
-    // 5. MYSTERY SURPRISE GIFT BOXES
-    if (rand(40) > 0.5) {
-      const boxX = chunkSize / 2 + (rand(41) > 0.5 ? 2.0 : -2.0);
-      const boxZ = 15 + rand(42) * (chunkSize - 30);
-
-      const boxGroup = new THREE.Group();
-      const cube = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.2, 1.2), mysteryBoxMat);
-      cube.position.y = 1.0;
-      cube.castShadow = true;
-
-      // Golden ribbon
-      const ribbon = new THREE.Mesh(
-        new THREE.BoxGeometry(1.24, 0.3, 1.24),
-        new THREE.MeshStandardMaterial({ color: 0xfacc15, metalness: 0.8, roughness: 0.2 })
-      );
-      ribbon.position.y = 1.0;
-      boxGroup.add(cube, ribbon);
-
-      boxGroup.position.set(boxX, 0, boxZ);
-      chunk.add(boxGroup);
-
-      registerCollidable(
-        `mystery_${cx}_${cz}`,
-        'mystery_box',
-        new THREE.Vector3(originX + boxX, 1.0, originZ + boxZ),
-        1.8,
-        boxGroup,
-        'minor',
-        false
-      );
-    }
-
-    // 6. CLUCKING CHICKENS ON THE ROAD!
-    // Flocks of 3 little chickens that flutter and squawk when approached
-    if (rand(50) > 0.45) {
-      const chX = chunkSize / 2 + (rand(51) - 0.5) * 3.5;
-      const chZ = 12 + rand(52) * (chunkSize - 24);
-
-      for (let k = 0; k < 3; k++) {
+      // A cheerful pair of chickens on opposite side
+      const chX = chunkSize / 2 - 3.8;
+      const chZ = mushZ - 4;
+      for (let k = 0; k < 2; k++) {
         const chickenGroup = new THREE.Group();
         const body = new THREE.Mesh(new THREE.SphereGeometry(0.35, 8, 8), chickenWhiteMat);
         body.position.y = 0.35;
@@ -279,15 +204,14 @@ export const sunnyCountrysideWorld: WorldDefinition = {
         beak.position.set(0, 0.42, 0.38);
 
         chickenGroup.add(body, comb, beak);
-        const offsetX = (k - 1) * 0.9;
-        const offsetZ = (k % 2) * 0.8;
-        chickenGroup.position.set(chX + offsetX, 0, chZ + offsetZ);
+        const offsetZ = k * 1.8;
+        chickenGroup.position.set(chX, 0, chZ + offsetZ);
         chunk.add(chickenGroup);
 
         registerCollidable(
           `chicken_${cx}_${cz}_${k}`,
           'chicken',
-          new THREE.Vector3(originX + chX + offsetX, 0.4, originZ + chZ + offsetZ),
+          new THREE.Vector3(originX + chX, 0.4, originZ + chZ + offsetZ),
           1.2,
           chickenGroup,
           'minor',
@@ -298,10 +222,68 @@ export const sunnyCountrysideWorld: WorldDefinition = {
       }
     }
 
-    // 7. ROTATING WINDMILL WITH SPINNING BLADES
-    if (rand(60) > 0.55) {
-      const millX = rand(61) > 0.5 ? 17 : chunkSize - 17;
-      const millZ = 14 + rand(62) * (chunkSize - 28);
+    // ZONE 3: TURBO SPEED BOOST PAD & MYSTERY GIFT BOX
+    else if (zone === 3) {
+      const boostZ = 16;
+      const boostGroup = new THREE.Group();
+
+      const padPlate = new THREE.Mesh(new THREE.BoxGeometry(5.2, 0.08, 3.6), woodDarkMat);
+      padPlate.position.y = 0.04;
+
+      const arrowGeo = new THREE.ConeGeometry(0.7, 1.2, 3);
+      arrowGeo.rotateX(Math.PI / 2);
+      [-0.8, 0, 0.8].forEach((zOff) => {
+        const arrow = new THREE.Mesh(arrowGeo, boostOrangeMat);
+        arrow.position.set(0, 0.1, zOff);
+        boostGroup.add(arrow);
+      });
+
+      boostGroup.add(padPlate);
+      boostGroup.position.set(chunkSize / 2, 0, boostZ);
+      chunk.add(boostGroup);
+
+      registerCollidable(
+        `boost_${cx}_${cz}`,
+        'boost_pad',
+        new THREE.Vector3(originX + chunkSize / 2, 0.2, originZ + boostZ),
+        2.8,
+        boostGroup,
+        'minor',
+        false
+      );
+
+      // Mystery Box placed 24m ahead down the straightaway!
+      const boxZ = boostZ + 24;
+      const boxGroup = new THREE.Group();
+      const cube = new THREE.Mesh(new THREE.BoxGeometry(1.4, 1.4, 1.4), mysteryBoxMat);
+      cube.position.y = 1.0;
+      cube.castShadow = true;
+
+      const ribbon = new THREE.Mesh(
+        new THREE.BoxGeometry(1.44, 0.3, 1.44),
+        new THREE.MeshStandardMaterial({ color: 0xfacc15, metalness: 0.8, roughness: 0.2 })
+      );
+      ribbon.position.y = 1.0;
+      boxGroup.add(cube, ribbon);
+
+      boxGroup.position.set(chunkSize / 2, 0, boxZ);
+      chunk.add(boxGroup);
+
+      registerCollidable(
+        `mystery_${cx}_${cz}`,
+        'mystery_box',
+        new THREE.Vector3(originX + chunkSize / 2, 1.0, originZ + boxZ),
+        2.0,
+        boxGroup,
+        'minor',
+        false
+      );
+    }
+
+    // ZONE 4: SCENIC COUNTRY WINDMILL & GRAZING COWS (Meadow Scenery on outer flanks)
+    else if (zone === 4) {
+      const millX = chunkSize - 16;
+      const millZ = chunkSize / 2;
 
       const millGroup = new THREE.Group();
       const tower = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 2.8, 9, 8), whiteTrimMat);
@@ -343,12 +325,10 @@ export const sunnyCountrysideWorld: WorldDefinition = {
         'major',
         false
       );
-    }
 
-    // 8. NODDING COWS THAT MOO
-    if (rand(70) > 0.5) {
-      const cowX = rand(71) > 0.5 ? 12 : chunkSize - 12;
-      const cowZ = 10 + rand(72) * (chunkSize - 20);
+      // Nodding cow on opposite side of meadow
+      const cowX = 13;
+      const cowZ = chunkSize / 2;
 
       const cowGroup = new THREE.Group();
       const body = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.2, 2.2), cowWhiteMat);
@@ -392,35 +372,43 @@ export const sunnyCountrysideWorld: WorldDefinition = {
       );
     }
 
-    // 9. SUNFLOWER PATCH (Flowers that gently sway in wind)
-    for (let s = 0; s < 5; s++) {
-      const sunX = rand(80 + s) > 0.5 ? 7.5 + rand(81 + s) * 3 : chunkSize - (7.5 + rand(81 + s) * 3);
-      const sunZ = 5 + rand(82 + s) * (chunkSize - 10);
+    // ZONE 5: COSMIC STARGATE WARP PORTAL (Clean Gateway to other worlds)
+    else if (zone === 5 && availableWorldIds.length > 1) {
+      const otherWorlds = availableWorldIds.filter((w) => w !== 'sunny_countryside');
+      const targetWorldId = otherWorlds[Math.floor(rand(96) * otherWorlds.length)];
 
-      const flowerGroup = new THREE.Group();
-      flowerGroup.name = 'sunflower';
-      const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 1.6, 6), foliageMat);
-      stem.position.y = 0.8;
-      flowerGroup.add(stem);
+      const portalX = chunkSize / 2;
+      const portalZ = chunkSize / 2;
 
-      const head = new THREE.Mesh(new THREE.CylinderGeometry(0.65, 0.65, 0.1, 12), sunflowerYellowMat);
-      head.position.set(0, 1.6, 0.1);
-      head.rotation.x = Math.PI / 4;
-      const center = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 0.12, 12), sunflowerCenterMat);
-      center.position.set(0, 1.61, 0.12);
-      center.rotation.x = Math.PI / 4;
-      flowerGroup.add(head, center);
+      const portalGroup = new THREE.Group();
+      portalGroup.name = 'portal_vortex';
+      const outerArch = new THREE.Mesh(new THREE.TorusGeometry(3.4, 0.5, 16, 32), portalRingMat);
+      outerArch.position.y = 3.4;
+      const vortex = new THREE.Mesh(new THREE.CircleGeometry(2.9, 32), portalVortexMat);
+      vortex.position.y = 3.4;
+      portalGroup.add(outerArch, vortex);
 
-      flowerGroup.position.set(sunX, 0, sunZ);
-      chunk.add(flowerGroup);
+      portalGroup.position.set(portalX, 0, portalZ);
+      chunk.add(portalGroup);
+
+      registerCollidable(
+        `portal_${cx}_${cz}`,
+        'portal',
+        new THREE.Vector3(originX + portalX, 3.4, originZ + portalZ),
+        3.8,
+        portalGroup,
+        'minor',
+        false,
+        targetWorldId
+      );
     }
 
-    // 10. APPLE TREES WITH BARS OF RED APPLES
-    const numTrees = Math.floor(5 * density);
+    // Gentle decorative trees well outside the road corridor (kept at outer edges > 10m)
+    const numTrees = Math.floor(3 * density);
     for (let i = 0; i < numTrees; i++) {
       const tx = 6 + rand(85 + i) * (chunkSize - 12);
-      if (Math.abs(tx - chunkSize / 2) > 8.0) {
-        const tz = 6 + rand(90 + i) * (chunkSize - 12);
+      if (Math.abs(tx - chunkSize / 2) > 10.0) {
+        const tz = 8 + rand(90 + i) * (chunkSize - 16);
         const tree = new THREE.Group();
 
         const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.6, 2.8, 8), treeTrunkMat);
@@ -453,38 +441,6 @@ export const sunnyCountrysideWorld: WorldDefinition = {
           false
         );
       }
-    }
-
-    // 11. PROCEDURAL STARGATE WARP PORTAL (High Frequency for Exciting Exploration!)
-    if (rand(95) > 0.35 && availableWorldIds.length > 1) {
-      const otherWorlds = availableWorldIds.filter((w) => w !== 'sunny_countryside');
-      const targetWorldId = otherWorlds[Math.floor(rand(96) * otherWorlds.length)];
-
-      // Spawns right on or adjacent to the roadway
-      const portalX = chunkSize / 2 + (rand(97) > 0.6 ? 2.8 : rand(97) < 0.4 ? -2.8 : 0);
-      const portalZ = 12 + rand(98) * (chunkSize - 24);
-
-      const portalGroup = new THREE.Group();
-      portalGroup.name = 'portal_vortex';
-      const outerArch = new THREE.Mesh(new THREE.TorusGeometry(3.2, 0.5, 16, 32), portalRingMat);
-      outerArch.position.y = 3.2;
-      const vortex = new THREE.Mesh(new THREE.CircleGeometry(2.7, 32), portalVortexMat);
-      vortex.position.y = 3.2;
-      portalGroup.add(outerArch, vortex);
-
-      portalGroup.position.set(portalX, 0, portalZ);
-      chunk.add(portalGroup);
-
-      registerCollidable(
-        `portal_${cx}_${cz}`,
-        'portal',
-        new THREE.Vector3(originX + portalX, 3.2, originZ + portalZ),
-        3.6,
-        portalGroup,
-        'minor',
-        false,
-        targetWorldId
-      );
     }
   },
 

@@ -182,8 +182,8 @@ export const trainRailwayModule: WorldModule = {
           trackZ,
           speed: trainSpeed,
           chunkSize,
-          minX: -chunkSize * 0.5,
-          maxX: chunkSize * 1.5,
+          minX: -chunkSize * 1.5,
+          maxX: chunkSize * 2.5,
         };
         // Face direction of travel
         train.rotation.y = trainSpeed > 0 ? -Math.PI / 2 : Math.PI / 2;

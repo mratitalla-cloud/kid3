@@ -27,9 +27,9 @@ export type GameEvent =
   | { type: 'FORCE_REQUEST_PERMISSIONS' }
   | { type: 'RESET_SPAWN' }
   | { type: 'WORLD_WARP'; worldId: string }
-  | { type: 'GAME_STATE'; x: number; y: number; z: number; yaw: number; speed: number; worldId: string; powerUp?: string; pitch?: number; roll?: number; isFlipped?: boolean }
+  | { type: 'GAME_STATE'; x: number; y: number; z: number; yaw: number; speed: number; worldId: string; vehicleId?: string; powerUp?: string; pitch?: number; roll?: number; isFlipped?: boolean }
   | { type: 'UPDATE_SETTINGS'; settings: Partial<ParentSettings> }
-  | { type: 'TRIGGER_ON_DEMAND'; action: 'spawn_landed_plane' | 'spawn_mega_ramp' | 'spawn_train_crossing' | 'spawn_traffic_rush' | 'spawn_red_chasers' | 'spawn_star_shower' | 'spawn_mushrooms' | 'pop_word'; word?: string; vehicleId?: string }
+  | { type: 'TRIGGER_ON_DEMAND'; action: 'spawn_landed_plane' | 'spawn_mega_ramp' | 'spawn_train_crossing' | 'spawn_traffic_rush' | 'spawn_red_chasers' | 'spawn_star_shower' | 'spawn_mushrooms' | 'pop_word' | 'spawn_challenge'; word?: string; vehicleId?: string; challengeId?: string; promptText?: string }
   | { type: 'PING'; timestamp: number }
   | { type: 'PONG'; timestamp: number };
 

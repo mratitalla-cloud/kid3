@@ -25,11 +25,17 @@ import {
   Train,
   PartyPopper,
   Flame,
+  Zap,
+  Plane,
+  Send,
+  Target,
+  ShieldAlert,
 } from 'lucide-react';
 import { ParentSettings, MotionPacket } from '../types/game';
 import { BUILTIN_VEHICLES, getAiVehiclePrompt, loadVehicleFromModule, VehicleItem } from '../vehicles/roster';
 import { BUILTIN_WORLDS, getAiWorldPrompt, WorldDefinition } from '../worlds';
 import { BUILTIN_MODULES, getAiModulePrompt } from '../modules';
+import { BUILTIN_CHALLENGES, getAiChallengePrompt } from '../challenges';
 
 interface ParentPanelProps {
   isOpen: boolean;
@@ -45,6 +51,11 @@ interface ParentPanelProps {
   currentWorldId: string;
   onSelectWorld: (worldId: string) => void;
   onSelectVehicle?: (vehicleId: string) => void;
+  onTriggerOnDemand?: (
+    action: 'spawn_landed_plane' | 'spawn_mega_ramp' | 'spawn_train_crossing' | 'spawn_traffic_rush' | 'spawn_red_chasers' | 'spawn_star_shower' | 'spawn_mushrooms' | 'pop_word' | 'spawn_challenge',
+    word?: string,
+    vehicleId?: string
+  ) => void;
 }
 
 export const ParentPanel: React.FC<ParentPanelProps> = ({
@@ -61,8 +72,12 @@ export const ParentPanel: React.FC<ParentPanelProps> = ({
   currentWorldId,
   onSelectWorld,
   onSelectVehicle,
+  onTriggerOnDemand,
 }) => {
-  const [activeTab, setActiveTab] = useState<'calibration' | 'worlds' | 'modules' | 'vehicles' | 'audio' | 'environment'>('calibration');
+  const [activeTab, setActiveTab] = useState<'triggers' | 'challenges' | 'calibration' | 'worlds' | 'modules' | 'vehicles' | 'audio' | 'environment'>('triggers');
+  const [customWord, setCustomWord] = useState('WHEEE! 🎈');
+  const [customChallengePrompt, setCustomChallengePrompt] = useState('High-speed police chase through neon city with siren barricades and runaway vans');
+  const [copiedChallengePrompt, setCopiedChallengePrompt] = useState(false);
   const [customJsCode, setCustomJsCode] = useState('');
   const [importStatus, setImportStatus] = useState<string | null>(null);
   const [copiedPrompt, setCopiedPrompt] = useState(false);
@@ -157,10 +172,32 @@ export const ParentPanel: React.FC<ParentPanelProps> = ({
         </div>
 
         {/* Navigation Tabs */}
-        <div className="flex items-center gap-1 px-6 pt-3 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/30">
+        <div className="flex items-center gap-1 px-6 pt-3 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/30 overflow-x-auto">
+          <button
+            onClick={() => setActiveTab('triggers')}
+            className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-t-lg transition-colors whitespace-nowrap ${
+              activeTab === 'triggers'
+                ? 'bg-white dark:bg-slate-900 text-amber-500 border-t-2 border-amber-500 shadow-sm'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+            }`}
+          >
+            <Zap className="w-4 h-4 text-amber-500 animate-pulse" />
+            <span>⚡ Live On-Demand Triggers</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('challenges')}
+            className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-t-lg transition-colors whitespace-nowrap ${
+              activeTab === 'challenges'
+                ? 'bg-white dark:bg-slate-900 text-rose-500 border-t-2 border-rose-500 shadow-sm'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+            }`}
+          >
+            <Target className="w-4 h-4 text-rose-500" />
+            <span>🎯 Challenges & AI Mission Prompts</span>
+          </button>
           <button
             onClick={() => setActiveTab('calibration')}
-            className={`flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-t-lg transition-colors ${
+            className={`flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-t-lg transition-colors whitespace-nowrap ${
               activeTab === 'calibration'
                 ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 border-t-2 border-indigo-600 shadow-sm'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
@@ -228,6 +265,312 @@ export const ParentPanel: React.FC<ParentPanelProps> = ({
 
         {/* Tab Content */}
         <div className="p-6 overflow-y-auto max-h-[60vh] space-y-6">
+          {activeTab === 'triggers' && (
+            <div className="space-y-6">
+              {/* Header Banner */}
+              <div className="p-4 bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-indigo-500/10 rounded-2xl border border-amber-500/30">
+                <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400 font-black text-sm">
+                  <Zap className="w-5 h-5 text-amber-500" />
+                  <span>Interactive Live Event Spawners (Activate on Request)</span>
+                </div>
+                <p className="text-xs text-slate-600 dark:text-slate-300 mt-1">
+                  Click any button to immediately spawn an exciting stunt, landed airplane, or train right in front of your toddler while they play!
+                </p>
+              </div>
+
+              {/* Section 1: Landed Planes & Flight Stunts */}
+              <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-3">
+                <div className="flex items-center gap-2 font-bold text-xs uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                  <Plane className="w-4 h-4 text-sky-500" />
+                  <span>✈️ Landed Biplanes & Airport Runways</span>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Toddlers can clearly see landed planes parked on the tarmac. Hit the plane to immediately jump in and take flight!
+                </p>
+                <div className="flex flex-wrap gap-2.5 pt-1">
+                  <button
+                    onClick={() => onTriggerOnDemand?.('spawn_landed_plane')}
+                    className="flex items-center gap-2 px-4 py-2.5 bg-sky-600 hover:bg-sky-500 active:scale-95 text-white font-bold text-xs rounded-xl shadow-md transition-all border border-sky-400"
+                  >
+                    <Plane className="w-4 h-4" />
+                    <span>Land a Biplane Right Ahead ✈️</span>
+                  </button>
+                  <button
+                    onClick={() => onSelectVehicle?.('biplane')}
+                    className="flex items-center gap-2 px-4 py-2.5 bg-amber-500 hover:bg-amber-400 active:scale-95 text-white font-bold text-xs rounded-xl shadow-md transition-all border border-amber-300"
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    <span>Drive / Fly Biplane Now</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Section 2: Mega Jumps, Stunts & Trampolines */}
+              <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-3">
+                <div className="flex items-center gap-2 font-bold text-xs uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                  <Flame className="w-4 h-4 text-orange-500" />
+                  <span>🚀 Mega Stunt Ramps & Big Jumps</span>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Spawns giant launch ramps and springy mushrooms that launch vehicles 34+ meters into the air with cartoon floaty hangtime!
+                </p>
+                <div className="flex flex-wrap gap-2.5 pt-1">
+                  <button
+                    onClick={() => onTriggerOnDemand?.('spawn_mega_ramp')}
+                    className="flex items-center gap-2 px-4 py-2.5 bg-orange-600 hover:bg-orange-500 active:scale-95 text-white font-bold text-xs rounded-xl shadow-md transition-all border border-orange-400"
+                  >
+                    <Flame className="w-4 h-4" />
+                    <span>Spawn Mega Stunt Ramp (34m Jump!) 🚀</span>
+                  </button>
+                  <button
+                    onClick={() => onTriggerOnDemand?.('spawn_mushrooms')}
+                    className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-bold text-xs rounded-xl shadow-md transition-all border border-emerald-400"
+                  >
+                    <Trees className="w-4 h-4" />
+                    <span>Spawn Bouncy Mushrooms 🍄</span>
+                  </button>
+                  <button
+                    onClick={() => onTriggerOnDemand?.('spawn_star_shower')}
+                    className="flex items-center gap-2 px-4 py-2.5 bg-amber-500 hover:bg-amber-400 active:scale-95 text-white font-bold text-xs rounded-xl shadow-md transition-all border border-amber-300"
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    <span>Rain Star Shower ⭐</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Section 3: Live World Events (Trains & Traffic) */}
+              <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-3">
+                <div className="flex items-center gap-2 font-bold text-xs uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                  <Car className="w-4 h-4 text-indigo-500" />
+                  <span>🚗 World Events: Trains & Traffic Convoys</span>
+                </div>
+                <div className="flex flex-wrap gap-2.5 pt-1">
+                  <button
+                    onClick={() => onTriggerOnDemand?.('spawn_traffic_rush')}
+                    className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white font-bold text-xs rounded-xl shadow-md transition-all"
+                  >
+                    <Car className="w-4 h-4" />
+                    <span>Spawn Traffic Convoy Ahead 🚗</span>
+                  </button>
+                  <button
+                    onClick={() => onSelectVehicle?.('steam_train')}
+                    className="flex items-center gap-2 px-4 py-2.5 bg-rose-600 hover:bg-rose-500 active:scale-95 text-white font-bold text-xs rounded-xl shadow-md transition-all"
+                  >
+                    <Train className="w-4 h-4" />
+                    <span>Drive Steam Train 🚂</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Section 4: 3D Floating Comic Pop Words */}
+              <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-3">
+                <div className="flex items-center gap-2 font-bold text-xs uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                  <PartyPopper className="w-4 h-4 text-purple-500" />
+                  <span>💬 Pop 3D Comic Words in World</span>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Spawns animated 3D comic speech bubbles right above the car!
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {['WHEEE! 🎈', 'SUPER JUMP! 🚀', 'BOING! 🍄', 'VROOM! 🏎️', 'AIRSHOW! ✈️', 'NICE JOB! ⭐', 'ZOOM! ⚡'].map((w) => (
+                    <button
+                      key={w}
+                      onClick={() => onTriggerOnDemand?.('pop_word', w)}
+                      className="px-3 py-1.5 bg-white dark:bg-slate-700 hover:bg-indigo-50 dark:hover:bg-slate-600 border border-slate-300 dark:border-slate-600 rounded-lg text-xs font-bold text-slate-800 dark:text-slate-200 shadow-sm active:scale-95 transition-all"
+                    >
+                      {w}
+                    </button>
+                  ))}
+                </div>
+                {/* Custom Word Input */}
+                <div className="flex gap-2 pt-2">
+                  <input
+                    type="text"
+                    value={customWord}
+                    onChange={(e) => setCustomWord(e.target.value)}
+                    placeholder="Type your kid's name or custom cheer (e.g. GO LEO! 🎉)"
+                    className="flex-1 px-3 py-2 text-xs bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                  <button
+                    onClick={() => {
+                      if (customWord.trim()) {
+                        onTriggerOnDemand?.('pop_word', customWord.trim());
+                      }
+                    }}
+                    className="flex items-center gap-1.5 px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs rounded-xl shadow-md transition-all active:scale-95"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    <span>Pop in 3D!</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Section 5: Instant 1-Click World Switcher */}
+              <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-3">
+                <div className="flex items-center gap-2 font-bold text-xs uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                  <Globe className="w-4 h-4 text-teal-500" />
+                  <span>🌍 Instant World Switcher (1-Click Warp)</span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {BUILTIN_WORLDS.map((w) => (
+                    <button
+                      key={w.id}
+                      onClick={() => onSelectWorld(w.id)}
+                      className={`p-2.5 rounded-xl border text-left text-xs font-bold transition-all active:scale-95 flex items-center justify-between ${
+                        currentWorldId === w.id
+                          ? 'bg-indigo-600 text-white border-indigo-500 shadow-md'
+                          : 'bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:border-indigo-400'
+                      }`}
+                    >
+                      <span className="truncate">{w.name}</span>
+                      {currentWorldId === w.id && <Check className="w-3.5 h-3.5 text-white ml-1 shrink-0" />}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Section 6: Direct Vehicle Spawner Ahead on Road */}
+              <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-3">
+                <div className="flex items-center gap-2 font-bold text-xs uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                  <Car className="w-4 h-4 text-indigo-500" />
+                  <span>🚗 Spawn Target Vehicle on Road (To Hit & Drive)</span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {activeVehicles.map((v) => (
+                    <button
+                      key={v.id}
+                      onClick={() => onTriggerOnDemand?.('spawn_traffic_rush', undefined, v.id)}
+                      className="p-2 bg-white dark:bg-slate-900 hover:bg-indigo-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-left text-xs transition-all active:scale-95"
+                    >
+                      <div className="font-bold text-slate-800 dark:text-slate-200 truncate">{v.name}</div>
+                      <div className="text-[10px] text-indigo-600 dark:text-indigo-400 font-semibold mt-0.5">Spawn Ahead ➜</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'challenges' && (
+            <div className="space-y-6">
+              {/* AI Mission Prompt Generator Box */}
+              <div className="p-5 bg-gradient-to-r from-rose-50 to-pink-50 dark:from-rose-950/30 dark:to-pink-950/30 rounded-2xl border-2 border-rose-300 dark:border-rose-800/60 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 font-black text-sm text-rose-700 dark:text-rose-300 uppercase tracking-wide">
+                    <Target className="w-5 h-5 text-rose-600 dark:text-rose-400" />
+                    <span>✨ AI Mission Prompt & Live Beacon Spawner</span>
+                  </div>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(getAiChallengePrompt(customChallengePrompt));
+                      setCopiedChallengePrompt(true);
+                      setTimeout(() => setCopiedChallengePrompt(false), 2200);
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-slate-900 border border-rose-300 dark:border-rose-700 hover:bg-rose-100 dark:hover:bg-slate-800 rounded-lg text-xs font-bold text-rose-700 dark:text-rose-300 transition-all shadow-sm active:scale-95"
+                  >
+                    {copiedChallengePrompt ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-emerald-500" />
+                        <span>Prompt Copied!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>Copy AI Prompt</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                <p className="text-xs text-rose-800 dark:text-rose-200">
+                  Type any custom toddler scenario or game theme below (e.g. <em>&quot;Police chase speeders with sirens and road cones&quot;</em>). You can copy the engineered AI prompt for Claude/Gemini, or click <strong>Spawn Beacon Ahead</strong> to spawn an interactive 3D Mission Beacon directly on the road!
+                </p>
+
+                <div className="space-y-2">
+                  <textarea
+                    value={customChallengePrompt}
+                    onChange={(e) => setCustomChallengePrompt(e.target.value)}
+                    rows={2}
+                    placeholder="Enter scenario e.g. Police cruiser chasing reckless sports cars through the city..."
+                    className="w-full px-3 py-2 text-xs bg-white dark:bg-slate-900 border border-rose-300 dark:border-rose-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 resize-none font-medium"
+                  />
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      onClick={() => onTriggerOnDemand?.('spawn_challenge', customChallengePrompt, 'police_chase')}
+                      className="flex items-center gap-2 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold shadow-md hover:shadow-lg transition-all active:scale-95"
+                    >
+                      <Sparkles className="w-4 h-4" />
+                      <span>Spawn Custom Mission Beacon Ahead on Road ➜</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Built-in Instant Challenges Grid */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 font-bold text-xs uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                  <Flame className="w-4 h-4 text-amber-500" />
+                  <span>Interactive Toddler Challenges (Spawn On Road Ahead)</span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {BUILTIN_CHALLENGES.map((challenge) => (
+                    <div
+                      key={challenge.id}
+                      className="p-4 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-md transition-all flex flex-col justify-between space-y-3"
+                    >
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xl">{challenge.badge}</span>
+                            <span className="font-bold text-sm text-slate-900 dark:text-slate-100">
+                              {challenge.title}
+                            </span>
+                          </div>
+                          <span
+                            className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase"
+                            style={{
+                              backgroundColor: `${challenge.bubbleColor}20`,
+                              color: challenge.bubbleColor,
+                            }}
+                          >
+                            {challenge.targetWorldId.replace('_', ' ')}
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                          {challenge.description}
+                        </p>
+                      </div>
+
+                      <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
+                        <button
+                          onClick={() => {
+                            const p = getAiChallengePrompt(challenge.aiPromptIdea);
+                            navigator.clipboard.writeText(p);
+                            setCustomChallengePrompt(challenge.aiPromptIdea);
+                          }}
+                          className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors"
+                        >
+                          <Copy className="w-3 h-3" />
+                          <span>Copy Prompt</span>
+                        </button>
+
+                        <button
+                          onClick={() => onTriggerOnDemand?.('spawn_challenge', challenge.description, challenge.id)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white rounded-lg shadow-sm hover:shadow transition-all active:scale-95"
+                          style={{ backgroundColor: challenge.bubbleColor }}
+                        >
+                          <span>Spawn Beacon Ahead ➜</span>
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
           {activeTab === 'calibration' && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Live Mirror Calibration Visualizer */}
